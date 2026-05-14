@@ -544,49 +544,128 @@ body.v-page .topbar::after {
 }
 @keyframes v-ribbon-in { to { transform: scaleX(1); } }
 
-body.v-page .brand .brand-mark { color: var(--vorange); filter: none; }
+/* ── brand wordmark — refined typography ─────────────────────────── */
+body.v-page .topbar { gap: 0; height: 56px; padding-top: 0; padding-bottom: 0; align-items: stretch; }
+body.v-page .brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 0 18px 0 4px; margin-right: 0;
+  color: var(--vfg); text-decoration: none;
+  border-radius: 0;
+}
+body.v-page .brand .brand-mark {
+  width: 20px; height: 20px;
+  color: var(--vorange);
+  filter: drop-shadow(0 0 6px rgba(255,92,0,0.35));
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+body.v-page .brand:hover .brand-mark { transform: scale(1.08); }
 body.v-page .wordmark {
-  font-family: var(--vfont-sans); font-size: 14px;
-  font-style: normal; font-weight: 600; letter-spacing: -0.02em;
+  font-family: var(--vfont-sans);
+  font-size: 14px; font-weight: 600;
+  font-style: normal;
+  letter-spacing: -0.025em;
   color: var(--vfg);
   text-transform: none;
+  line-height: 1;
+  white-space: nowrap;
 }
-body.v-page .wordmark-dot { color: var(--vorange); }
-
-body.v-page .topnav a {
-  font-family: var(--vfont-sans); font-size: 13px; font-weight: 500;
-  font-style: normal; letter-spacing: -0.01em;
-  color: var(--vfg-2);
-  padding: 6px 11px; border-radius: var(--vradius-2);
-}
-body.v-page .topnav a:hover { color: var(--vfg); background: var(--vsurface-2); }
-body.v-page .topnav a.active {
+body.v-page .wordmark-slash {
   color: var(--vorange);
-  background: linear-gradient(180deg, rgba(255, 92, 0, 0.08), rgba(255, 92, 0, 0.02));
-  box-shadow: inset 0 0 0 1px rgba(255, 92, 0, 0.18);
+  font-weight: 400; margin: 0 1px;
+  font-variant-numeric: tabular-nums;
 }
 
-body.v-page .search { max-width: min(560px, 36vw); min-width: 240px; }
+/* ── vertical rule grouping brand from nav ───────────────────────── */
+body.v-page .topbar-rule {
+  width: 1px; height: 24px; align-self: center;
+  background: var(--vborder); margin: 0 8px 0 0;
+  flex-shrink: 0;
+}
+
+/* ── nav — tighter, no italic, bottom-border active ──────────────── */
+body.v-page .topnav { display: flex; gap: 2px; align-items: center; padding: 0 8px; }
+body.v-page .topnav a {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--vfont-sans);
+  font-size: 13px; font-weight: 500;
+  font-style: normal; letter-spacing: -0.005em;
+  color: var(--vfg-2);
+  padding: 8px 12px;
+  border-radius: var(--vradius-2);
+  position: relative;
+  transition: color 0.15s, background 0.15s;
+}
+body.v-page .topnav a:hover {
+  color: var(--vfg);
+  background: rgba(255,255,255,0.04);
+  text-decoration: none;
+}
+body.v-page .topnav a.active { color: var(--vorange); background: transparent; box-shadow: none; }
+body.v-page .topnav a.active::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px;
+  height: 2px; background: var(--vorange);
+  border-radius: 2px 2px 0 0;
+}
+body.v-page .topnav a .icon { width: 14px; height: 14px; color: currentColor; opacity: 0.75; }
+body.v-page .topnav a:hover .icon,
+body.v-page .topnav a.active .icon { opacity: 1; }
+
+/* ── search — compact command-bar with ⌘K hint ──────────────────── */
+body.v-page .search {
+  align-self: center;
+  flex: 0 1 auto;
+  width: clamp(260px, 28vw, 420px);
+  min-width: 0; max-width: none;
+  display: flex; align-items: center;
+  position: relative;
+  margin-left: auto;
+}
+body.v-page .search-affix {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--vfg-4); pointer-events: none; display: inline-flex;
+}
+body.v-page .search-affix .icon { width: 14px; height: 14px; }
 body.v-page .search input {
-  font-family: var(--vfont-mono); font-style: normal; font-size: 12px;
+  flex: 1; width: 100%;
+  font-family: var(--vfont-sans); font-style: normal; font-size: 13px;
+  font-weight: 400; letter-spacing: -0.005em;
   background: var(--vsurface); color: var(--vfg);
   border: 1px solid var(--vborder);
-  border-right: 0;
-  border-radius: var(--vradius-2) 0 0 var(--vradius-2);
-  padding-left: 36px;
+  border-radius: var(--vradius-2);
+  padding: 8px 78px 8px 36px;
+  height: 34px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-body.v-page .search input::placeholder { color: var(--vfg-4); font-style: normal; }
-body.v-page .search input:focus { border-color: var(--vborder-focus); outline: 0; box-shadow: 0 0 0 3px var(--vorange-glow); }
-body.v-page .search input:focus + button { border-color: var(--vborder-focus); }
-body.v-page .search button {
-  background: var(--vsurface); color: var(--vfg-2);
-  border: 1px solid var(--vborder); border-left: 0;
-  font-family: var(--vfont-mono); font-style: normal; font-size: 12px;
-  border-radius: 0 var(--vradius-2) var(--vradius-2) 0;
-  padding: 8px 14px;
+body.v-page .search input::placeholder {
+  color: var(--vfg-4); font-style: normal;
 }
-body.v-page .search button:hover { color: var(--vorange); background: var(--vsurface-2); }
-body.v-page .search-affix { color: var(--vfg-4); }
+body.v-page .search input:focus {
+  border-color: var(--vborder-focus); outline: 0;
+  box-shadow: 0 0 0 3px var(--vorange-glow);
+}
+body.v-page .search input:focus ~ .search-affix { color: var(--vorange); }
+
+body.v-page .search-kbd {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; gap: 3px;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+body.v-page .search input:focus ~ .search-kbd { opacity: 0; }
+body.v-page .search-kbd kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 4px;
+  background: var(--vsurface-3); border: 1px solid var(--vborder);
+  border-radius: 3px;
+  font-family: var(--vfont-mono); font-size: 10px; font-weight: 500;
+  color: var(--vfg-3); line-height: 1;
+}
+
+/* SR-only search submit — Enter still submits the form */
+body.v-page .search-submit-sr {
+  position: absolute; left: -9999px; width: 1px; height: 1px;
+  overflow: hidden;
+}
 
 /* ── shared primitives ─────────────────────────────────────────────── */
 body.v-page .kbd {

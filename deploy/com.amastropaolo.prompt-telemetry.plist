@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS LaunchAgent for prompt-telemetry UI.
+
+  Install:
+      cp deploy/com.amastropaolo.prompt-telemetry.plist ~/Library/LaunchAgents/
+      launchctl load -w ~/Library/LaunchAgents/com.amastropaolo.prompt-telemetry.plist
+
+  Or use the helper:
+      bin/service install      # copy + load
+      bin/service status       # query
+      bin/service restart      # bounce
+      bin/service uninstall    # unload + remove
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.amastropaolo.prompt-telemetry</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/amastro/Projects/prompt-telemetry/.venv/bin/python</string>
+    <string>-m</string>
+    <string>uvicorn</string>
+    <string>prompt_telemetry.ui.app:app</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>8767</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/amastro/Projects/prompt-telemetry</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <key>Crashed</key>
+    <true/>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/amastro/Projects/prompt-telemetry/data/ui-stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/amastro/Projects/prompt-telemetry/data/ui-stderr.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>Nice</key>
+  <integer>5</integer>
+</dict>
+</plist>

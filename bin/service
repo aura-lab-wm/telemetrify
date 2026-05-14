@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Manage the prompt-telemetry LaunchAgent on macOS.
+# Subcommands: install | uninstall | start | stop | restart | status | logs
+set -eu
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+LABEL="com.amastropaolo.prompt-telemetry"
+PLIST_SRC="$ROOT/deploy/$LABEL.plist"
+PLIST_DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+cmd="${1:-status}"
+
+case "$cmd" in
+  install)
+    if [[ ! -f "$PLIST_SRC" ]]; then
+      echo "missing: $PLIST_SRC" >&2; exit 1
+    fi
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cp "$PLIST_SRC" "$PLIST_DEST"
+    launchctl unload "$PLIST_DEST" 2>/dev/null || true
+    launchctl load -w "$PLIST_DEST"
+    echo "installed and loaded: $LABEL"
+    launchctl list | grep "$LABEL" || true
+    ;;
+
+  uninstall)
+    launchctl unload "$PLIST_DEST" 2>/dev/null || true
+    rm -f "$PLIST_DEST"
+    echo "uninstalled: $LABEL"
+    ;;
+
+  start)
+    launchctl start "$LABEL"
+    echo "started: $LABEL"
+    ;;
+
+  stop)
+    launchctl stop "$LABEL"
+    echo "stopped: $LABEL"
+    ;;
+
+  restart)
+    launchctl stop "$LABEL" 2>/dev/null || true
+    sleep 1
+    launchctl start "$LABEL"
+    echo "restarted: $LABEL"
+    ;;
+
+  status)
+    echo "label:    $LABEL"
+    echo "plist:    $PLIST_DEST"
+    if launchctl list | grep -q "$LABEL"; then
+      launchctl list | grep "$LABEL"
+      echo "loaded:   yes"
+    else
+      echo "loaded:   no"
+    fi
+    if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8767/" 2>/dev/null | grep -q 200; then
+      echo "health:   UI responding on http://127.0.0.1:8767"
+    else
+      echo "health:   UI NOT responding on 8767"
+    fi
+    ;;
+
+  logs)
+    echo "--- stdout (tail) ---"
+    tail -n 30 "$ROOT/data/ui-stdout.log" 2>/dev/null || echo "(none)"
+    echo
+    echo "--- stderr (tail) ---"
+    tail -n 30 "$ROOT/data/ui-stderr.log" 2>/dev/null || echo "(none)"
+    ;;
+
+  *)
+    echo "usage: $(basename "$0") {install|uninstall|start|stop|restart|status|logs}"
+    exit 2
+    ;;
+esac

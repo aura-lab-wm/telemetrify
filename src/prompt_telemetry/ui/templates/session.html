@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+{% if session %}
+  <h2>session {{ session.id }}</h2>
+  <p class="meta">started {{ session.started_at[:19] }} · cwd <code>{{ session.cwd }}</code> · branch <code>{{ session.git_branch or '—' }}</code></p>
+  <ol class="turns">
+    {% for t in turns %}
+      <li>
+        <a href="/turns/{{ t.id }}" class="turn-link">turn #{{ t.id }} · {{ t.started_at[:19] }}</a>
+        <div class="meta">{{ t.tool_call_count }} tool calls · in {{ t.input_tokens }} / out {{ t.output_tokens }} tokens · {{ t.latency_ms or 0 }}ms</div>
+        <div class="prompt">{{ t.user_text|snippet }}</div>
+      </li>
+    {% endfor %}
+  </ol>
+{% else %}
+  <p>session not found.</p>
+{% endif %}
+{% endblock %}

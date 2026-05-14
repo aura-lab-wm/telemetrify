@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  prompt-telemetry icon set — "drafting marks"
+  All icons: 24×24 grid, 1.5px stroke, round caps/joins, currentColor.
+  Each icon carries one deliberate asymmetric break so the set reads as designed,
+  not stock. Use via <svg class="icon"><use href="/static/icons.svg#i-name"/></svg>.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <!-- ─────────── brand mark: an ECG pulse with a captured-data terminus ─────────── -->
+    <symbol id="i-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="3" y1="5" x2="3" y2="19" opacity=".55"/>
+      <path d="M3 12 H7 L9 5.5 L12 18.5 L14 9.5 L16 12 H20.5"/>
+      <circle cx="20.5" cy="12" r="1.4" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <!-- ─────────── turns: three threaded cards, middle one inset (a dialogue) ─────────── -->
+    <symbol id="i-turns" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3"  y="4.5"  width="13" height="4" rx="1"/>
+      <rect x="8"  y="10"   width="13" height="4" rx="1"/>
+      <rect x="3"  y="15.5" width="11" height="4" rx="1"/>
+      <circle cx="3" cy="6.5" r="0.9" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <!-- ─────────── clusters: three connected nodes + one detached outlier ─────────── -->
+    <symbol id="i-clusters" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="7.5" y1="8" x2="16.5" y2="9.5"/>
+      <line x1="16.5" y1="9.5" x2="11.5" y2="17"/>
+      <line x1="11.5" y1="17" x2="7.5" y2="8"/>
+      <circle cx="7.5"  cy="8"   r="2.2" fill="currentColor" stroke="none"/>
+      <circle cx="16.5" cy="9.5" r="2.2" fill="currentColor" stroke="none"/>
+      <circle cx="11.5" cy="17"  r="2.2" fill="currentColor" stroke="none"/>
+      <circle cx="20"   cy="18.5" r="1.2" opacity=".55" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <!-- ─────────── dashboard: 2×2 panel grid with chart hints; one panel active ─────────── -->
+    <symbol id="i-dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3"  y="3"  width="8" height="8" rx="1"/>
+      <rect x="13" y="3"  width="8" height="8" rx="1"/>
+      <rect x="3"  y="13" width="8" height="8" rx="1"/>
+      <rect x="13" y="13" width="8" height="8" rx="1"/>
+      <!-- top-left: tiny bars -->
+      <line x1="5"  y1="8.5" x2="5"  y2="7"/>
+      <line x1="7"  y1="8.5" x2="7"  y2="5.5"/>
+      <line x1="9"  y1="8.5" x2="9"  y2="6.5"/>
+      <!-- top-right: trending line -->
+      <path d="M15 8.5 L17 6.5 L19 7.5"/>
+      <!-- bottom-left: ring (donut hint) -->
+      <circle cx="7" cy="17" r="1.6"/>
+      <!-- bottom-right: scattered points (heatmap hint) -->
+      <circle cx="15.5" cy="15.5" r="0.5" fill="currentColor" stroke="none"/>
+      <circle cx="18.5" cy="15.5" r="0.5" fill="currentColor" stroke="none"/>
+      <circle cx="15.5" cy="18.5" r="0.5" fill="currentColor" stroke="none"/>
+      <circle cx="18.5" cy="18.5" r="0.5" fill="currentColor" stroke="none"/>
+      <circle cx="17"   cy="17"   r="0.5" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <!-- ─────────── search: magnifier with handle pitched a few degrees off ─────────── -->
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="10.5" cy="10.5" r="5.5"/>
+      <line x1="15" y1="15" x2="20.5" y2="19.5"/>
+    </symbol>
+
+    <!-- ─────────── filter: three bars decreasing toward a captured datapoint ─────────── -->
+    <symbol id="i-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="4"  y1="6"  x2="20" y2="6"/>
+      <line x1="6"  y1="11" x2="18" y2="11"/>
+      <line x1="9"  y1="16" x2="15" y2="16"/>
+      <circle cx="12" cy="20.5" r="1.2" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <!-- ─────────── rerun: circular arrow with a tail-tick (replay) ─────────── -->
+    <symbol id="i-rerun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 12 A8.5 8.5 0 1 0 12 3.5 A8.5 8.5 0 0 0 5.2 7"/>
+      <polyline points="3.5 3.5 3.5 8 8 8"/>
+    </symbol>
+
+    <!-- ─────────── export: download arrow into tray ─────────── -->
+    <symbol id="i-export" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="4" x2="12" y2="15.5"/>
+      <polyline points="7 11 12 16 17 11"/>
+      <path d="M4 18.5 V20 a1.5 1.5 0 0 0 1.5 1.5 H18.5 a1.5 1.5 0 0 0 1.5 -1.5 V18.5"/>
+    </symbol>
+
+    <!-- ─────────── external-link: arrow leaving a frame ─────────── -->
+    <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 4 H5 a1 1 0 0 0 -1 1 V19 a1 1 0 0 0 1 1 H19 a1 1 0 0 0 1 -1 V13"/>
+      <polyline points="15 4 20 4 20 9"/>
+      <line x1="12" y1="12" x2="20" y2="4"/>
+    </symbol>
+
+    <!-- ─────────── chevron-left / right with extended tail past the apex ─────────── -->
+    <symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 5 8.5 12 15 19"/>
+      <line x1="8.5" y1="12" x2="6" y2="12"/>
+    </symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="9 5 15.5 12 9 19"/>
+      <line x1="15.5" y1="12" x2="18" y2="12"/>
+    </symbol>
+
+    <!-- ─────────── followup: return-key shape (right turn into back-arrow) ─────────── -->
+    <symbol id="i-followup" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 6 V11 a4 4 0 0 1 -4 4 H6"/>
+      <polyline points="9.5 11.5 6 15 9.5 18.5"/>
+    </symbol>
+
+    <!-- ─────────── rating up / down / zero — refined geometric marks ─────────── -->
+    <symbol id="i-rating-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5 L20 17 H4 Z" fill="currentColor" fill-opacity=".18"/>
+      <line x1="6" y1="20.5" x2="18" y2="20.5" opacity=".55"/>
+    </symbol>
+    <symbol id="i-rating-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 19 L4 7 H20 Z" fill="currentColor" fill-opacity=".18"/>
+      <line x1="6" y1="3.5" x2="18" y2="3.5" opacity=".55"/>
+    </symbol>
+    <symbol id="i-rating-zero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="4" y1="12" x2="20" y2="12"/>
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <!-- ─────────── status: check / x / budget (dollar diamond) / spinner / warning ─────────── -->
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="4 13 10 18.5 20 6"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="6" y1="6" x2="18" y2="18"/>
+      <line x1="18" y1="6" x2="6" y2="18"/>
+    </symbol>
+    <symbol id="i-budget" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3 L21 12 L12 21 L3 12 Z"/>
+      <path d="M15 9 H10.5 a1.75 1.75 0 0 0 0 3.5 H13.5 a1.75 1.75 0 0 1 0 3.5 H9"/>
+      <line x1="12" y1="6.5" x2="12" y2="17.5"/>
+    </symbol>
+    <symbol id="i-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="8" opacity=".22"/>
+      <path d="M20 12 A8 8 0 0 0 12 4"/>
+    </symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3.5 L21.5 20.5 H2.5 Z"/>
+      <line x1="12" y1="10" x2="12" y2="14.5"/>
+      <circle cx="12" cy="17.5" r="0.9" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <!-- ─────────── session: a paragraph-of-turns silhouette ─────────── -->
+    <symbol id="i-session" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="4"  y1="6"  x2="20" y2="6"/>
+      <line x1="4"  y1="10" x2="16" y2="10"/>
+      <line x1="4"  y1="14" x2="19" y2="14"/>
+      <line x1="4"  y1="18" x2="12" y2="18"/>
+    </symbol>
+
+    <!-- ─────────── token: a small parallelogram cluster (units of computation) ─────────── -->
+    <symbol id="i-tokens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 7 L11 5 L11 11 L5 13 Z"/>
+      <path d="M13 11 L19 9 L19 15 L13 17 Z" opacity=".7"/>
+    </symbol>
+
+    <!-- ─────────── tool: bracketed input (shell prompt) — matches the "tool_calls" category ─────────── -->
+    <symbol id="i-tool" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="5 7 3 12 5 17"/>
+      <polyline points="19 7 21 12 19 17"/>
+      <line x1="10" y1="9" x2="14" y2="15"/>
+    </symbol>
+  </defs>
+</svg>

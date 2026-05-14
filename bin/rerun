@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Replay a recorded turn against the current `claude` CLI.
+set -eu
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m prompt_telemetry.rerun "$@"

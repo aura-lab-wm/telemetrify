@@ -1,0 +1,39 @@
+# Database and runtime artifacts — never commit
+data/prompts.db
+data/prompts.db-wal
+data/prompts.db-shm
+data/backups/
+data/reruns/
+data/*.log
+data/*.log.*
+data/.migrations.lock
+data/.lock
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local environment overrides
+.env
+.env.*
+!.env.example
+
+# uv / pip
+.python-version

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="turn-nav">
+  <a href="/turns/{{ turn.id }}">← turn #{{ turn.id }}</a>
+  <span>
+    <a href="/turns/{{ turn.id }}/reruns">all reruns</a>
+    {% if rerun.replay_session_id %}
+      <a href="/sessions/{{ rerun.replay_session_id }}">rerun session</a>
+    {% endif %}
+  </span>
+</nav>
+
+<section class="turn">
+  <h2>diff · turn #{{ turn.id }} vs rerun #{{ rerun.id }}</h2>
+  <p class="meta">
+    prompt: <em>{{ turn.user_text|snippet(160) }}</em>
+  </p>
+
+  <div class="delta-strip">
+    <div class="delta-card">
+      <h4>cost</h4>
+      <div class="delta-row">
+        <span class="orig">original — <span class="muted">(unmeasured)</span></span>
+        <span class="rerun">rerun <b>{% if rerun.total_cost_usd is not none %}${{ '%.4f' % rerun.total_cost_usd }}{% else %}—{% endif %}</b></span>
+      </div>
+    </div>
+    <div class="delta-card">
+      <h4>duration</h4>
+      <div class="delta-row">
+        <span class="orig">original <b>{{ turn.latency_ms or 0 }}ms</b></span>
+        <span class="rerun">rerun <b>{% if rerun.duration_ms is not none %}{{ rerun.duration_ms }}ms{% else %}—{% endif %}</b>
+          {% if rerun.duration_ms is not none and turn.latency_ms %}
+            <span class="delta-arrow {% if rerun.duration_ms > turn.latency_ms %}up{% else %}down{% endif %}">
+              {{ '+' if rerun.duration_ms > turn.latency_ms else '' }}{{ rerun.duration_ms - turn.latency_ms }}ms
+            </span>
+          {% endif %}
+        </span>
+      </div>
+    </div>
+    <div class="delta-card">
+      <h4>input tokens</h4>
+      <div class="delta-row">
+        <span class="orig">original <b>{{ turn.input_tokens or 0 }}</b></span>
+        <span class="rerun">rerun <b>{{ rerun.input_tokens or 0 }}</b>
+          {% if rerun.input_tokens is not none %}
+            <span class="delta-arrow {% if (rerun.input_tokens or 0) > (turn.input_tokens or 0) %}up{% else %}down{% endif %}">
+              {{ '+' if (rerun.input_tokens or 0) > (turn.input_tokens or 0) else '' }}{{ (rerun.input_tokens or 0) - (turn.input_tokens or 0) }}
+            </span>
+          {% endif %}
+        </span>
+      </div>
+    </div>
+    <div class="delta-card">
+      <h4>output tokens</h4>
+      <div class="delta-row">
+        <span class="orig">original <b>{{ turn.output_tokens or 0 }}</b></span>
+        <span class="rerun">rerun <b>{{ rerun.output_tokens or 0 }}</b>
+          {% if rerun.output_tokens is not none %}
+            <span class="delta-arrow {% if (rerun.output_tokens or 0) > (turn.output_tokens or 0) %}up{% else %}down{% endif %}">
+              {{ '+' if (rerun.output_tokens or 0) > (turn.output_tokens or 0) else '' }}{{ (rerun.output_tokens or 0) - (turn.output_tokens or 0) }}
+            </span>
+          {% endif %}
+        </span>
+      </div>
+    </div>
+    <div class="delta-card">
+      <h4>model</h4>
+      <div class="delta-row">
+        <span class="orig">original <code>{{ turn.model }}</code></span>
+        <span class="rerun">rerun <code>{{ rerun.model }}</code></span>
+      </div>
+    </div>
+    <div class="delta-card">
+      <h4>status</h4>
+      <div class="delta-row">
+        <span class="rerun"><span class="status-badge {{ rerun.status }}">{{ rerun.status }}</span></span>
+      </div>
+    </div>
+  </div>
+
+  {% if rerun.error_message %}
+    <details class="rerun-error" open>
+      <summary>rerun error</summary>
+      <pre>{{ rerun.error_message }}</pre>
+    </details>
+  {% endif %}
+
+  <h3>prompt</h3>
+  <div class="prompt-body">{{ turn.user_text|md|safe }}</div>
+
+  <h3>response diff</h3>
+  <div class="diff-wrap">
+    {{ diff_html|safe }}
+  </div>
+
+  <details>
+    <summary>original response (rendered)</summary>
+    <div class="response-body">{{ turn.assistant_text|md|safe }}</div>
+  </details>
+  <details>
+    <summary>rerun response (rendered)</summary>
+    <div class="response-body">{{ (rerun.response_text or '')|md|safe }}</div>
+  </details>
+</section>
+{% endblock %}

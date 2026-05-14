@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}prompt-telemetry{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {% include "_icons.html" %}
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="prompt-telemetry home">
+      <svg class="icon brand-mark" aria-hidden="true"><use href="#i-pulse"/></svg>
+      <span class="wordmark">prompt<span class="wordmark-dot">·</span>telemetry</span>
+    </a>
+    <nav class="topnav">
+      <a href="/" {% if request and request.url.path == '/' %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-turns"/></svg>
+        <span>turns</span>
+      </a>
+      <a href="/clusters" {% if request and '/clusters' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-clusters"/></svg>
+        <span>clusters</span>
+      </a>
+      <a href="/dashboard" {% if request and '/dashboard' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-dashboard"/></svg>
+        <span>dashboard</span>
+      </a>
+    </nav>
+    <form class="search" action="/" method="get" role="search">
+      <span class="search-affix"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></span>
+      <input type="search" name="q" value="{{ q|default('') }}" placeholder="semantic search across all prompts…" autofocus>
+      <button type="submit" aria-label="search">
+        <span>search</span>
+      </button>
+    </form>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

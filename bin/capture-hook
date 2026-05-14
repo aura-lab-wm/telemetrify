@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Stop-hook entry. Receives JSON on stdin from Claude Code; writes the
+# completed turn into the local SQLite telemetry DB. Never blocks.
+set -u
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m prompt_telemetry.capture

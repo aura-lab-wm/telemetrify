@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Backfill historical transcripts into the telemetry DB.
+set -eu
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m prompt_telemetry.backfill "$@"

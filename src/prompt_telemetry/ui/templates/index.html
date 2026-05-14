@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="layout">
+  <aside class="sidebar">
+    <h3>sessions</h3>
+    <ul class="session-list">
+      {% for s in sessions %}
+        <li>
+          <a href="/sessions/{{ s.id }}">
+            <span class="sid">{{ s.id[:8] }}</span>
+            <span class="meta">{{ s.turn_count }} turns · {{ s.last_turn_at[:16] if s.last_turn_at else '' }}</span>
+            <span class="cwd">{{ s.cwd }}</span>
+          </a>
+        </li>
+      {% else %}
+        <li class="empty">no sessions yet</li>
+      {% endfor %}
+    </ul>
+  </aside>
+
+  <section class="results">
+    {% if stats %}
+    <div class="stats">
+      <span><svg class="icon" aria-hidden="true"><use href="#i-session"/></svg><b>{{ stats.sessions }}</b> sessions</span>
+      <span><svg class="icon" aria-hidden="true"><use href="#i-turns"/></svg><b>{{ stats.turns }}</b> turns</span>
+      <span><svg class="icon" aria-hidden="true"><use href="#i-tool"/></svg><b>{{ stats.tool_calls }}</b> tool calls</span>
+      <span><svg class="icon" aria-hidden="true"><use href="#i-tokens"/></svg><b>{{ stats.tokens }}</b> tokens</span>
+      <span class="stats-sep"></span>
+      <a href="/dashboard" class="stats-link"><svg class="icon" aria-hidden="true"><use href="#i-dashboard"/></svg>dashboard</a>
+      <a href="/api/stats" class="stats-link"><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg>stats json</a>
+    </div>
+    {% endif %}
+
+    <details class="filter-bar" {% if active_filters %}open{% endif %}>
+      <summary><svg class="icon" aria-hidden="true"><use href="#i-filter"/></svg><span>filters{% if active_filters %} <em class="filter-count">{{ active_filters|length }} active</em>{% endif %}</span></summary>
+      <form action="/" method="get" class="filter-form">
+        <input type="hidden" name="q" value="{{ q }}">
+        <label>model
+          <select name="model">
+            <option value="">any</option>
+            {% for m in facets.models %}<option value="{{ m }}" {% if active_filters.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>skill
+          <select name="skill">
+            <option value="">any</option>
+            {% for s in facets.skills %}<option value="{{ s }}" {% if active_filters.skill == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>origin
+          <select name="origin">
+            <option value="">any</option>
+            {% for o in facets.origins %}<option value="{{ o }}" {% if active_filters.origin == o %}selected{% endif %}>{{ o }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>cwd contains
+          <input type="text" name="cwd_glob" placeholder="*/Projects/*" value="{{ active_filters.cwd_glob or '' }}">
+        </label>
+        <label>since
+          <input type="date" name="since" value="{{ active_filters.since or '' }}">
+        </label>
+        <label>until
+          <input type="date" name="until" value="{{ active_filters.until or '' }}">
+        </label>
+        <label class="chk"><input type="checkbox" name="has_error" value="1" {% if active_filters.has_error == '1' %}checked{% endif %}> tool errors</label>
+        <label class="chk"><input type="checkbox" name="has_followup" value="1" {% if active_filters.has_followup == '1' %}checked{% endif %}> follow-ups</label>
+        <label class="chk"><input type="checkbox" name="has_annotation" value="1" {% if active_filters.has_annotation == '1' %}checked{% endif %}> annotated</label>
+        <label>min latency ms <input type="number" name="min_latency_ms" min="0" style="width:80px" value="{{ active_filters.min_latency_ms or '' }}"></label>
+        <label>min tokens <input type="number" name="min_tokens" min="0" style="width:80px" value="{{ active_filters.min_tokens or '' }}"></label>
+        <button type="submit">apply</button>
+        <a href="/" class="clear">clear</a>
+      </form>
+    </details>
+
+    <h2>{% if mode == 'search' %}results for "{{ q }}"{% else %}most recent turns{% endif %}</h2>
+    {% for r in results %}
+      <article class="turn-card">
+        <header>
+          <a href="/turns/{{ r.id }}" class="turn-link">turn #{{ r.id }}</a>
+          <span class="ts">{{ r.started_at[:19] }}</span>
+          {% if r.score is not none %}<span class="score">rrf={{ '%.4f' % r.score }}</span>{% endif %}
+          <span class="model">{{ r.model }}{% if r.origin == 'rerun' %} · <em>rerun</em>{% endif %}</span>
+        </header>
+        <div class="prompt">{{ r.user_text|snippet }}</div>
+        <div class="response">{{ r.assistant_text|snippet(360) }}</div>
+        <footer><a href="/sessions/{{ r.session_id }}">session {{ r.session_id[:8] }}</a> · {{ r.cwd }}</footer>
+      </article>
+    {% else %}
+      <p class="empty">no turns matched.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

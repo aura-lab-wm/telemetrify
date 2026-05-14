@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}dashboard · prompt-telemetry{% endblock %}
+{% block content %}
+<nav class="turn-nav">
+  <a href="/">← all turns</a>
+  <span>
+    <a href="/api/export?format=jsonl">export jsonl</a>
+    <a href="/api/export?format=csv">export csv</a>
+  </span>
+</nav>
+
+<section class="dashboard">
+  <div class="health-tile" id="health-tile">
+    <h3>system health</h3>
+    <div class="health-body" id="health-body">loading…</div>
+  </div>
+
+  <h2>analysis</h2>
+
+  <div class="charts-grid">
+    <div class="chart-card"><div id="chart-turns-per-day" class="chart"></div></div>
+    <div class="chart-card"><div id="chart-tokens-by-model" class="chart"></div></div>
+    <div class="chart-card wide"><div id="chart-tool-heatmap" class="chart"></div></div>
+    <div class="chart-card"><div id="chart-error-rate" class="chart"></div></div>
+    <div class="chart-card"><div id="chart-latency" class="chart"></div></div>
+    <div class="chart-card"><div id="chart-annotations" class="chart"></div></div>
+    <div class="chart-card"><div id="chart-correction-rate" class="chart"></div></div>
+    <div class="chart-card wide"><div id="chart-top-clusters" class="chart"></div></div>
+  </div>
+</section>
+
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="/static/dashboard.js"></script>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="turn-nav">
+  <a href="/turns/{{ turn.id }}">← turn #{{ turn.id }}</a>
+  <span><a href="/sessions/{{ turn.session_id }}">session</a></span>
+</nav>
+
+<section class="turn">
+  <h2>reruns of turn #{{ turn.id }}</h2>
+  <p class="meta">
+    {{ reruns|length }} rerun{{ '' if reruns|length == 1 else 's' }} ·
+    original model <code>{{ turn.model }}</code> ·
+    prompt: <em>{{ turn.user_text|snippet(140) }}</em>
+  </p>
+
+  {% if not reruns %}
+    <p class="empty">no reruns yet — kick one off from the turn page.</p>
+  {% else %}
+    <ul class="rerun-list">
+      {% for r in reruns %}
+        <li class="rerun-row rerun-{{ r.status }}">
+          <header>
+            <a class="rerun-link" href="/turns/{{ turn.id }}/diff/{{ r.id }}">rerun #{{ r.id }}</a>
+            <span class="status-badge {{ r.status }}">{{ r.status }}</span>
+            <span class="ts">{{ r.run_at[:19] }}</span>
+            <span class="model">{{ r.model }}</span>
+          </header>
+          <div class="rerun-meta">
+            {% if r.total_cost_usd is not none %}cost ${{ '%.4f' % r.total_cost_usd }} · {% endif %}
+            {% if r.duration_ms is not none %}{{ r.duration_ms }}ms · {% endif %}
+            {% if r.input_tokens is not none %}in {{ r.input_tokens }} / out {{ r.output_tokens or 0 }} tokens · {% endif %}
+            {% if r.num_turns is not none %}{{ r.num_turns }} internal turn{{ '' if r.num_turns == 1 else 's' }}{% endif %}
+          </div>
+          {% if r.error_message %}
+            <details class="rerun-error">
+              <summary>error</summary>
+              <pre>{{ r.error_message }}</pre>
+            </details>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+{% endblock %}

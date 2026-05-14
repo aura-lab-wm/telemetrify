@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h2><svg class="icon icon-lg" aria-hidden="true"><use href="#i-clusters"/></svg> prompt clusters</h2>
+<p class="meta">Semantically-grouped prompts (HDBSCAN over MiniLM prompt embeddings). Each cluster is one variant family.</p>
+<ol class="cluster-list">
+  {% for c in clusters %}
+    <li>
+      <a href="/clusters/{{ c.id }}" class="cluster-link"><svg class="icon" aria-hidden="true"><use href="#i-clusters"/></svg>#{{ c.id }} <em>· {{ c.member_count }} members</em></a>
+      <div class="cluster-label">{{ c.label }}</div>
+      <div class="meta">last seen {{ c.last_seen[:16] if c.last_seen else '—' }} · rep turn #{{ c.representative_turn_id }}</div>
+    </li>
+  {% else %}
+    <li class="empty">no clusters yet — run <code>bin/recluster</code></li>
+  {% endfor %}
+</ol>
+{% endblock %}

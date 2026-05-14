@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="turn-nav">
+  <a href="/sessions/{{ turn.session_id }}" class="nav-link">
+    <svg class="icon" aria-hidden="true"><use href="#i-session"/></svg>
+    <span>session {{ turn.session_id[:8] }}</span>
+  </a>
+  <span class="nav-right">
+    {% if prev_id %}<a href="/turns/{{ prev_id }}" class="nav-link"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg><span>prev</span></a>{% endif %}
+    {% if next_id %}<a href="/turns/{{ next_id }}" class="nav-link"><span>next</span><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg></a>{% endif %}
+    <a href="/api/turns/{{ turn.id }}" class="nav-link"><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg><span>json</span></a>
+  </span>
+</nav>
+
+<section class="turn">
+  <h2>turn #{{ turn.id }}</h2>
+  <p class="meta">
+    {{ turn.started_at[:19] }} → {{ turn.finished_at[:19] if turn.finished_at else '—' }} ·
+    model <code>{{ turn.model }}</code> · cli <code>{{ turn.cli_version }}</code>
+    {% if turn.attribution_skill %} · skill <code>{{ turn.attribution_skill }}</code>{% endif %}
+    {% if turn.attribution_plugin %} · plugin <code>{{ turn.attribution_plugin }}</code>{% endif %}
+    {% if turn.origin and turn.origin != 'organic' %} · <em>{{ turn.origin }}</em>{% endif %}
+  </p>
+  <p class="badges">
+    {% if cluster %}
+      <a href="/clusters/{{ cluster.id }}" class="badge badge-cluster">
+        <svg class="icon" aria-hidden="true"><use href="#i-clusters"/></svg>
+        <span>cluster #{{ cluster.id }} · {{ cluster.label[:60] }} <em>({{ cluster.member_count }} members)</em></span>
+      </a>
+    {% endif %}
+    {% if followup %}
+      <a href="/turns/{{ followup.prev_turn_id }}" class="badge badge-followup">
+        <svg class="icon" aria-hidden="true"><use href="#i-followup"/></svg>
+        <span>{{ followup.kind }} of #{{ followup.prev_turn_id }}{% if followup.distance %} <em>(d={{ '%.2f' % followup.distance }})</em>{% endif %}</span>
+      </a>
+    {% endif %}
+  </p>
+
+  <section class="rerun-block">
+    <form action="/api/rerun/{{ turn.id }}" method="post" class="rerun-form">
+      <input type="hidden" name="budget_usd" value="0.50">
+      <button type="submit" class="rerun-btn" title="Replay this prompt against the current claude CLI (capped at $0.50)">
+        <svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>
+        <span>rerun this prompt</span>
+      </button>
+      <span class="rerun-hint">budget $0.50 · cwd <code>data/reruns/{{ turn.id }}/…</code></span>
+      <a class="rerun-list-link" href="/turns/{{ turn.id }}/reruns">all reruns →</a>
+    </form>
+  </section>
+  <p class="meta">
+    {{ turn.tool_call_count }} tool calls · {{ turn.assistant_message_count }} assistant msgs ·
+    in {{ turn.input_tokens }} / out {{ turn.output_tokens }} tokens
+    (cache create {{ turn.cache_creation_tokens or 0 }} / read {{ turn.cache_read_tokens or 0 }}) ·
+    {{ turn.latency_ms or 0 }}ms · cwd <code>{{ turn.cwd }}</code>
+    {% if turn.git_branch %} · branch <code>{{ turn.git_branch }}</code>{% endif %}
+  </p>
+
+  <section class="annotation-block">
+    <h3>annotation {% if annotation %}<span class="muted">(updated {{ annotation.updated_at[:16] }})</span>{% endif %}</h3>
+    <form action="/api/annotations/{{ turn.id }}" method="post" class="annotation-form">
+      <div class="rating-row">
+        <label class="r r-pos">
+          <input type="radio" name="rating" value="1" {% if annotation and annotation.rating == 1 %}checked{% endif %}>
+          <svg class="icon" aria-hidden="true"><use href="#i-rating-up"/></svg>
+          <span>good</span>
+        </label>
+        <label class="r r-neu">
+          <input type="radio" name="rating" value="0" {% if not annotation or annotation.rating == 0 %}checked{% endif %}>
+          <svg class="icon" aria-hidden="true"><use href="#i-rating-zero"/></svg>
+          <span>neutral</span>
+        </label>
+        <label class="r r-neg">
+          <input type="radio" name="rating" value="-1" {% if annotation and annotation.rating == -1 %}checked{% endif %}>
+          <svg class="icon" aria-hidden="true"><use href="#i-rating-down"/></svg>
+          <span>bad</span>
+        </label>
+        <label>label
+          <input type="text" name="label" placeholder="good|bad|regression|expected" value="{{ annotation.label if annotation else '' }}">
+        </label>
+        <label>tags (csv)
+          <input type="text" name="tags" placeholder="auth, regression-prone, ..." value="{{ annotation.tags if annotation else '' }}">
+        </label>
+      </div>
+      <label>expected behavior
+        <textarea name="expected_behavior" rows="2" placeholder="what *should* have happened?">{{ annotation.expected_behavior if annotation else '' }}</textarea>
+      </label>
+      <label>notes
+        <textarea name="notes" rows="2" placeholder="free text">{{ annotation.notes if annotation else '' }}</textarea>
+      </label>
+      <div class="annotation-actions">
+        <button type="submit">save annotation</button>
+        {% if annotation %}
+          <form action="/api/annotations/{{ turn.id }}/delete" method="post" style="display:inline">
+            <button type="submit" class="danger">delete</button>
+          </form>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+
+  <h3>prompt</h3>
+  <div class="prompt-body">{{ turn.user_text|md|safe }}</div>
+
+  <h3>response</h3>
+  <div class="response-body">{{ turn.assistant_text|md|safe }}</div>
+
+  {% if turn.thinking_text %}
+    <details>
+      <summary>thinking ({{ turn.thinking_text|length }} chars)</summary>
+      <div class="response-body">{{ turn.thinking_text|md|safe }}</div>
+    </details>
+  {% endif %}
+
+  {% if similar %}
+    <aside class="similar-sidebar">
+      <h3>similar turns (other sessions)</h3>
+      <ul class="similar-list">
+        {% for s in similar %}
+          <li class="similar-card">
+            <a class="turn-link" href="/turns/{{ s.id }}">turn #{{ s.id }}</a>
+            <span class="dist">d={{ '%.4f' % s.distance }}</span>
+            <div class="snippet">{{ s.user_text|snippet(220) }}</div>
+            <footer><a href="/sessions/{{ s.session_id }}">session {{ s.session_id[:8] }}</a> · <span class="ts">{{ s.started_at[:19] }}</span></footer>
+          </li>
+        {% endfor %}
+      </ul>
+    </aside>
+  {% endif %}
+
+  {% if tool_calls %}
+    <h3>tool calls</h3>
+    <ol class="tool-calls">
+      {% for tc in tool_calls %}
+        <li class="{{ 'err' if tc.is_error else '' }}">
+          <header><code>{{ tc.tool_name }}</code> {% if tc.is_error %}<span class="badge">error</span>{% endif %} <span class="ts">{{ tc.started_at[:19] if tc.started_at else '' }}</span></header>
+          <details>
+            <summary>input ({{ tc.input_json|length }} chars)</summary>
+            <pre>{{ tc.input_json }}</pre>
+          </details>
+          <details>
+            <summary>output ({{ (tc.output_text or '')|length }} chars)</summary>
+            <pre>{{ tc.output_text }}</pre>
+          </details>
+        </li>
+      {% endfor %}
+    </ol>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="turn-nav">
+  <a href="/clusters" class="nav-link"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg><span>all clusters</span></a>
+</nav>
+<h2><svg class="icon icon-lg" aria-hidden="true"><use href="#i-clusters"/></svg> cluster #{{ cluster.id }}</h2>
+<p class="meta">{{ cluster.member_count }} members · representative turn <a href="/turns/{{ cluster.representative_turn_id }}">#{{ cluster.representative_turn_id }}</a></p>
+<p class="cluster-label"><strong>{{ cluster.label }}</strong></p>
+
+<h3>members (newest first)</h3>
+<ol class="turns">
+  {% for m in members %}
+    <li>
+      <a href="/turns/{{ m.id }}" class="turn-link">turn #{{ m.id }} · {{ m.started_at[:19] }}{% if m.origin and m.origin != 'organic' %} · <em>{{ m.origin }}</em>{% endif %}</a>
+      <div class="meta">sim {{ '%.3f' % (m.similarity_to_centroid or 0) }} · {{ m.model }} · {{ m.cwd }}</div>
+      <div class="prompt">{{ m.user_text|snippet }}</div>
+      <div class="response">{{ m.assistant_text|snippet(280) }}</div>
+    </li>
+  {% endfor %}
+</ol>
+{% endblock %}

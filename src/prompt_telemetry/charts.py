@@ -18,8 +18,10 @@ from typing import Any
 # ─── Telemetry · Vercel Mode Plotly theme ────────────────────────────────
 # Pure-black canvas. Single signature orange (#ff5c00). Geist Mono throughout.
 # Aligns with the v-page CSS scope shared with /ask and /queue.
-LEDGER_PALETTE = ["#ff5c00", "#ff7d33", "#f59e0b", "#22c55e", "#ef4444",
-                  "#a78bfa", "#06b6d4", "#facc15", "#fb7185", "#94a3b8"]
+# Monochromatic orange + neutrals + red. No green/cyan/purple anywhere.
+LEDGER_PALETTE = ["#ff5c00", "#ff7d33", "#ffa366", "#ffc299",
+                  "#f59e0b", "#a1a1aa", "#71717a", "#52525b",
+                  "#ef4444", "#c44600"]
 
 _LEDGER_AXIS = {
     "gridcolor":     "rgba(255,255,255,0.05)",
@@ -256,7 +258,7 @@ def latency(conn: sqlite3.Connection) -> dict:
     return {
         "data": [
             {"type": "scatter", "mode": "lines+markers", "x": weeks, "y": p50,
-             "name": "p50", "line": {"color": "#22c55e", "width": 1.5},
+             "name": "p50", "line": {"color": "#ff9233", "width": 1.5},
              "marker": {"size": 5}},
             {"type": "scatter", "mode": "lines+markers", "x": weeks, "y": p95,
              "name": "p95", "line": {"color": "#ff5c00", "width": 1.5},
@@ -274,7 +276,7 @@ def annotations(conn: sqlite3.Connection) -> dict:
         "SELECT rating, COUNT(*) AS n FROM annotations GROUP BY rating"
     ).fetchall()
     labels_by_rating = {-1: "bad", 0: "neutral", 1: "good"}
-    color_by_rating = {-1: "#ef4444", 0: "#8a8270", 1: "#22c55e"}
+    color_by_rating = {-1: "#ef4444", 0: "#8a8270", 1: "#ff9233"}
     by_rating = {r["rating"]: r["n"] for r in rows}
     ratings = [-1, 0, 1]
     return {
@@ -337,7 +339,7 @@ def top_clusters(conn: sqlite3.Connection) -> dict:
             "type": "bar", "orientation": "h",
             "x": [r["member_count"] for r in rows],
             "y": [(r["label"][:48] + "…") if len(r["label"] or "") > 48 else (r["label"] or f"cluster #{r['id']}") for r in rows],
-            "marker": {"color": "#22c55e", "line": {"color": "#0a0a0a", "width": 1}},
+            "marker": {"color": "#ff9233", "line": {"color": "#0a0a0a", "width": 1}},
             "text": [str(r["member_count"]) for r in rows],
             "textposition": "outside",
             "textfont": {"family": "Geist Mono, monospace", "size": 10, "color": "#a1a1aa"},
@@ -376,7 +378,7 @@ def cache_efficiency(conn: sqlite3.Connection) -> dict:
     return {
         "data": [
             {"type": "bar", "x": weeks, "y": hits, "name": "cache read (hit)",
-             "marker": {"color": "#22c55e"}, "yaxis": "y2"},
+             "marker": {"color": "#ff9233"}, "yaxis": "y2"},
             {"type": "bar", "x": weeks, "y": misses, "name": "cache creation (miss)",
              "marker": {"color": "#52525b"}, "yaxis": "y2"},
             {"type": "scatter", "mode": "lines+markers", "x": weeks, "y": pct,
@@ -423,7 +425,7 @@ def cluster_correction_breakdown(conn: sqlite3.Connection) -> dict:
     return {
         "data": [
             {"type": "bar", "orientation": "h", "x": clean, "y": labels,
-             "name": "clean", "marker": {"color": "#22c55e"}},
+             "name": "clean", "marker": {"color": "#ff9233"}},
             {"type": "bar", "orientation": "h", "x": corrected, "y": labels,
              "name": "corrected", "marker": {"color": "#ef4444"},
              "text": [f"{p:.0f}%" if p > 0 else "" for p in pct],

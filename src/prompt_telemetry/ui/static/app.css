@@ -26,10 +26,10 @@
   --graphite:    #71717a;
 
   /* accents — single orange + status colors only */
-  --phosphor:    #ff5c00;   /* primary accent (was warm amber) */
-  --sage:        #22c55e;   /* success */
-  --brass:       #ff7d33;   /* secondary orange tint */
-  --foxing:      #f59e0b;   /* warning amber */
+  --phosphor:    #ff5c00;   /* primary accent */
+  --sage:        #ff9233;   /* "positive" — secondary amber-orange (NOT green) */
+  --brass:       #ff7d33;
+  --foxing:      #f59e0b;
   --burgundy:    #ef4444;   /* destructive */
 
   /* typography — Geist everywhere, no serifs */
@@ -504,7 +504,7 @@ body.v-page {
   --vorange-2:     #ff7d33;
   --vorange-dim:   #c44600;
   --vorange-glow:  rgba(255, 92, 0, 0.18);
-  --vgreen:        #22c55e;
+  --vgreen:        #ff9233;   /* "good" — kept as a variable name but it's amber-orange. No green in this UI. */
   --vred:          #ef4444;
 
   --vfont-sans:    "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;

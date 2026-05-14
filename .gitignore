@@ -43,3 +43,6 @@ data/models/
 data/push.log
 data/vapid_private.pem
 data/vapid_public.pem
+
+# Editor / sed backups
+*.bak

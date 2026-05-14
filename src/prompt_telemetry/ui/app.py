@@ -217,7 +217,8 @@ def cluster_index(request: Request):
     conn = connect()
     rows = conn.execute(
         """
-        SELECT pc.id, pc.label, pc.member_count, pc.representative_turn_id, pc.updated_at,
+        SELECT pc.id, pc.label, pc.auto_label, pc.member_count,
+               pc.representative_turn_id, pc.updated_at,
                (SELECT MAX(t.started_at) FROM turn_cluster tc JOIN turns t ON t.id = tc.turn_id
                  WHERE tc.cluster_id = pc.id) AS last_seen
         FROM prompt_clusters pc
@@ -303,6 +304,52 @@ def dashboard(request: Request):
     return _render("dashboard.html", {"q": ""})
 
 
+@app.get("/api/dashboard/headline", response_class=JSONResponse)
+def dashboard_headline():
+    """Narrative-fold data: sessions, turns, first/last entry, follow-up rate,
+    cache-hit ratio, models seen, top tool. Used by the ledger header."""
+    c = connect()
+    r = c.execute("""
+        SELECT COUNT(*) AS sessions FROM sessions
+    """).fetchone()
+    sessions = r["sessions"]
+    r = c.execute("""
+        SELECT COUNT(*) AS turns, MIN(started_at) AS first_at, MAX(started_at) AS last_at,
+               SUM(COALESCE(input_tokens,0)+COALESCE(output_tokens,0)) AS tokens,
+               SUM(COALESCE(cache_read_tokens,0)) AS cache_hit,
+               SUM(COALESCE(cache_creation_tokens,0)) AS cache_miss
+        FROM turns
+    """).fetchone()
+    followups = c.execute("SELECT COUNT(*) AS n FROM turn_followups").fetchone()["n"]
+    clusters = c.execute("SELECT COUNT(*) AS n FROM prompt_clusters").fetchone()["n"]
+    annotations = c.execute("SELECT COUNT(*) AS n FROM annotations").fetchone()["n"]
+    top_tool = c.execute("""
+        SELECT tool_name, COUNT(*) AS n FROM tool_calls
+        GROUP BY tool_name ORDER BY n DESC LIMIT 1
+    """).fetchone()
+    top_model = c.execute("""
+        SELECT model, COUNT(*) AS n FROM turns
+        WHERE model IS NOT NULL GROUP BY model ORDER BY n DESC LIMIT 1
+    """).fetchone()
+    turns = r["turns"] or 0
+    cache_hit = int(r["cache_hit"] or 0)
+    cache_miss = int(r["cache_miss"] or 0)
+    return JSONResponse({
+        "sessions": sessions,
+        "turns": turns,
+        "first_at": r["first_at"],
+        "last_at": r["last_at"],
+        "tokens": int(r["tokens"] or 0),
+        "followups": followups,
+        "followup_pct": (100.0 * followups / turns) if turns else 0.0,
+        "clusters": clusters,
+        "annotations": annotations,
+        "cache_hit_pct": (100.0 * cache_hit / (cache_hit + cache_miss)) if (cache_hit + cache_miss) else 0.0,
+        "top_tool": dict(top_tool) if top_tool else None,
+        "top_model": dict(top_model) if top_model else None,
+    })
+
+
 def _chart_endpoint(name: str):
     fn = CHARTS[name]
     def _handler():
@@ -340,6 +387,65 @@ def api_export(request: Request):
             headers={"Content-Disposition": 'attachment; filename="turns.jsonl"'},
         )
     return JSONResponse({"error": "format must be jsonl or csv"}, status_code=400)
+
+
+# ─── Web Push notifications ────────────────────────────────────────────
+from fastapi.responses import FileResponse
+
+
+@app.get("/sw.js")
+def serve_sw():
+    """Serve the service worker at the site root so its scope is `/`."""
+    return FileResponse(
+        STATIC_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/api/push/vapid-public-key", response_class=JSONResponse)
+def push_vapid_public_key():
+    from ..push_notify import vapid_public_key, ensure_vapid_keys
+    ensure_vapid_keys()
+    return JSONResponse({"key": vapid_public_key()})
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(request: Request):
+    from ..push_notify import register_subscription
+    body = await request.json()
+    sub = body.get("subscription", body)
+    keys = sub.get("keys", {}) or {}
+    sub_id = register_subscription(
+        connect(),
+        endpoint=sub["endpoint"],
+        p256dh=keys.get("p256dh", ""),
+        auth=keys.get("auth", ""),
+        user_agent=body.get("user_agent") or request.headers.get("user-agent"),
+    )
+    return JSONResponse({"id": sub_id})
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(request: Request):
+    from ..push_notify import unregister_subscription
+    body = await request.json()
+    ok = unregister_subscription(connect(), endpoint=body["endpoint"])
+    return JSONResponse({"removed": ok})
+
+
+# ─── Classifier (sklearn fallback grader) ──────────────────────────────
+from ..ai.classifier import GraderClassifier
+
+
+@app.get("/api/classifier/status", response_class=JSONResponse)
+def classifier_status():
+    return JSONResponse(GraderClassifier().latest_model_meta() or {"trained": False})
+
+
+@app.get("/api/classifier/predict/{turn_id}", response_class=JSONResponse)
+def classifier_predict(turn_id: int):
+    return JSONResponse(GraderClassifier().predict(connect(), turn_id))
 
 
 def _run_rerun_safely(turn_id: int, model: str | None, budget_usd: float) -> None:
@@ -398,4 +504,18 @@ def turn_rerun_diff(request: Request, turn_id: int, rerun_id: int):
     turn = dict(turn); turn.pop("raw_json_z", None)
     rerun = dict(rerun)
     diff_html = render_inline_diff(turn.get("assistant_text") or "", rerun.get("response_text") or "")
-    return _render("diff.html", {"turn": turn, "rerun": rerun, "diff_html": diff_html, "q": ""})
+    judgment_row = conn.execute(
+        "SELECT * FROM rerun_judgments WHERE rerun_id = ?", (rerun_id,)
+    ).fetchone()
+    judgment = None
+    if judgment_row:
+        judgment = dict(judgment_row)
+        try:
+            from ..raw_archive import decompress_json
+            judgment["dimensions"] = decompress_json(judgment.pop("dimensions_json", None)) or {}
+        except Exception:
+            judgment["dimensions"] = {}
+    return _render("diff.html", {
+        "turn": turn, "rerun": rerun, "diff_html": diff_html,
+        "judgment": judgment, "q": "",
+    })

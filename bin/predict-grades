@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Score turns with the local grader classifier; persist to classifier_predictions.
+set -eu
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m prompt_telemetry.ai.classifier predict-all "$@"

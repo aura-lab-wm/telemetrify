@@ -90,6 +90,13 @@ def main() -> int:
                     assign_nearest_cluster(conn, turn_id, prompt_vec)
                 except Exception:
                     _log(f"cluster assign failed: {traceback.format_exc()}")
+                # Round A1: inline LLM-as-Judge grade. Fail-silent (capture must
+                # never block the user). 10s timeout via the SDK's own timeout.
+                try:
+                    from .ai.grader import grade_turn
+                    grade_turn(conn, turn_id, timeout=10.0)
+                except Exception:
+                    _log(f"auto-grade failed: {traceback.format_exc()}")
             finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             record_ingest_run(conn, "hook", started_at, finished_at,
                               inserted, skipped, errors, note)

@@ -37,3 +37,9 @@ dist/
 
 # uv / pip
 .python-version
+
+# AI / model artifacts (v3)
+data/models/
+data/push.log
+data/vapid_private.pem
+data/vapid_public.pem

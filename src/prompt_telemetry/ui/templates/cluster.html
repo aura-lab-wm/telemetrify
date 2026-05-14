@@ -3,9 +3,9 @@
 <nav class="turn-nav">
   <a href="/clusters" class="nav-link"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg><span>all clusters</span></a>
 </nav>
-<h2><svg class="icon icon-lg" aria-hidden="true"><use href="#i-clusters"/></svg> cluster #{{ cluster.id }}</h2>
+<h2><svg class="icon icon-lg" aria-hidden="true"><use href="#i-clusters"/></svg> cluster #{{ cluster.id }}{% if cluster.auto_label %} · <em>{{ cluster.auto_label }}</em>{% endif %}</h2>
 <p class="meta">{{ cluster.member_count }} members · representative turn <a href="/turns/{{ cluster.representative_turn_id }}">#{{ cluster.representative_turn_id }}</a></p>
-<p class="cluster-label"><strong>{{ cluster.label }}</strong></p>
+<p class="cluster-label">{% if cluster.auto_label %}<span class="cluster-auto-label-line">{{ cluster.auto_label }}</span><br>{% endif %}<strong>{{ cluster.label }}</strong></p>
 
 <h3>members (newest first)</h3>
 <ol class="turns">

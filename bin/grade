@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Batch auto-grade turns via the LLM-as-Judge.
+set -eu
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m prompt_telemetry.ai.grader "$@"

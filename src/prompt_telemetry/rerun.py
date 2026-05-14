@@ -247,6 +247,15 @@ def run_rerun(turn_id: int, model: str | None = None,
                     finished_at=finished_at,
                 )
 
+            # Round A3: LLM verdict on the rerun. Fail-silent — the rerun row
+            # is already persisted; a missing judgment just means no banner.
+            if status == "success" and response_text:
+                try:
+                    from .ai.rerun_judge import judge as _judge
+                    _judge(conn, rerun_id)
+                except Exception:
+                    pass
+
             row = conn.execute("SELECT * FROM reruns WHERE id = ?", (rerun_id,)).fetchone()
             return _row_to_dict(row) or {}
         finally:

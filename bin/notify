@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Send a Web Push notification to every active subscription.
+# Useful for testing; the digest module calls notify() directly.
+set -eu
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m prompt_telemetry.push_notify_cli "$@"

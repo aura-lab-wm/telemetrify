@@ -16,6 +16,34 @@
     prompt: <em>{{ turn.user_text|snippet(160) }}</em>
   </p>
 
+  {% if judgment %}
+    {% set v = judgment.verdict %}
+    <section class="verdict verdict-{{ v }}">
+      <header>
+        <span class="verdict-label">verdict</span>
+        <span class="verdict-value">{{ {'better':'B is better','same':'A ≈ B','worse':'A is better','inconclusive':'inconclusive'}[v] }}</span>
+        <span class="verdict-conf">confidence {{ '%.2f' % (judgment.confidence or 0) }}</span>
+        <span class="verdict-model">judge: <code>{{ judgment.model }}</code></span>
+      </header>
+      {% if judgment.reasoning %}
+        <p class="verdict-reasoning">"{{ judgment.reasoning }}"</p>
+      {% endif %}
+      {% if judgment.dimensions and judgment.dimensions.a and judgment.dimensions.b %}
+        <div class="verdict-dims">
+          <span class="dim-label">A</span>
+          <span class="dim-cell">q <b>{{ judgment.dimensions.a.quality }}</b></span>
+          <span class="dim-cell">c <b>{{ judgment.dimensions.a.completeness }}</b></span>
+          <span class="dim-cell">a <b>{{ judgment.dimensions.a.accuracy }}</b></span>
+          <span class="dim-sep">→</span>
+          <span class="dim-label">B</span>
+          <span class="dim-cell">q <b>{{ judgment.dimensions.b.quality }}</b></span>
+          <span class="dim-cell">c <b>{{ judgment.dimensions.b.completeness }}</b></span>
+          <span class="dim-cell">a <b>{{ judgment.dimensions.b.accuracy }}</b></span>
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+
   <div class="delta-strip">
     <div class="delta-card">
       <h4>cost</h4>

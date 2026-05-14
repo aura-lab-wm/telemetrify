@@ -14,6 +14,10 @@ dependencies = [
     "hdbscan>=0.8.40",
     "scikit-learn>=1.4",
     "python-multipart>=0.0.9",
+    "pywebpush>=2.0",
+    "py-vapid>=1.9",
+    "cryptography>=42.0",
+    "anthropic>=0.30",
 ]
 
 [build-system]

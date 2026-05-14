@@ -15,11 +15,64 @@ import sqlite3
 from collections import defaultdict
 from typing import Any
 
-_DARK = {"template": "plotly_dark", "margin": {"l": 50, "r": 20, "t": 40, "b": 50}}
+# ─── Telemetry Ledger Plotly theme ─────────────────────────────────────────
+# Warm lamplit palette. Serif title, mono ticks. No grid emphasis. Designed
+# to read as a logbook plate, not a SaaS dashboard tile.
+LEDGER_PALETTE = ["#e8b04d", "#7cb273", "#b89968", "#c47a72", "#8a8270",
+                  "#a87f5f", "#5d8a8a", "#c4934a", "#9bb87c", "#c5b083"]
+
+_LEDGER_AXIS = {
+    "gridcolor": "#221f19",
+    "linecolor": "#2a2620",
+    "zerolinecolor": "#2a2620",
+    "tickcolor": "#3a3528",
+    "tickfont": {"family": "Geist Mono, IBM Plex Mono, monospace",
+                 "color": "#a89e84", "size": 10},
+    "title": {"font": {"family": "Newsreader, serif", "color": "#7a7259",
+                       "size": 11}},
+    "automargin": True,
+}
+
+_LEDGER_BASE = {
+    "paper_bgcolor": "#1c1a13",
+    "plot_bgcolor":  "#1c1a13",
+    "font": {"family": "Geist Mono, IBM Plex Mono, monospace",
+             "color": "#a89e84", "size": 11},
+    "margin": {"l": 56, "r": 24, "t": 56, "b": 44},
+    "xaxis": _LEDGER_AXIS,
+    "yaxis": _LEDGER_AXIS,
+    "colorway": LEDGER_PALETTE,
+    "legend": {"font": {"family": "Newsreader, serif", "size": 11,
+                        "color": "#a89e84"},
+               "bgcolor": "rgba(0,0,0,0)", "borderwidth": 0,
+               "orientation": "h", "y": -0.18, "x": 0},
+    "hoverlabel": {"bgcolor": "#232017", "bordercolor": "#3a3528",
+                   "font": {"family": "Geist Mono, monospace",
+                            "color": "#e8e1cc", "size": 11}},
+}
 
 
-def _layout(title: str, **extra: Any) -> dict:
-    layout = {"title": {"text": title}, **_DARK}
+def _layout(title: str, exhibit: str | None = None, **extra: Any) -> dict:
+    """Build a Ledger-themed Plotly layout.
+
+    `exhibit` is the figure caption ("Fig. 3 · weekly latency p50/p95") — it
+    becomes the chart title, rendered serif in lamplit cream.
+    """
+    caption = f"{exhibit} · {title}" if exhibit else title
+    layout = {
+        **_LEDGER_BASE,
+        "title": {
+            "text": caption,
+            "font": {"family": "Newsreader, serif", "size": 15,
+                     "color": "#e8e1cc"},
+            "x": 0, "xanchor": "left", "y": 0.97, "yanchor": "top",
+            "pad": {"l": 0, "t": 4},
+        },
+    }
+    for axis_key in ("xaxis", "yaxis"):
+        if axis_key in extra:
+            merged = {**_LEDGER_AXIS, **extra.pop(axis_key)}
+            layout[axis_key] = merged
     layout.update(extra)
     return layout
 
@@ -31,24 +84,22 @@ def turns_per_day(conn: sqlite3.Connection) -> dict:
         SELECT date(started_at) AS d, COUNT(*) AS n
         FROM turns
         WHERE started_at >= date('now', '-90 days')
-        GROUP BY d
-        ORDER BY d
+        GROUP BY d ORDER BY d
         """
     ).fetchall()
     x = [r["d"] for r in rows]
     y = [r["n"] for r in rows]
     return {
         "data": [{
-            "type": "scatter",
-            "mode": "lines+markers",
-            "x": x,
-            "y": y,
-            "name": "turns",
-            "line": {"color": "#7aa2ff"},
+            "type": "scatter", "mode": "lines",
+            "x": x, "y": y, "name": "turns",
+            "line": {"color": "#e8b04d", "width": 1.5, "shape": "spline", "smoothing": 0.4},
+            "fill": "tozeroy",
+            "fillcolor": "rgba(232,176,77,0.10)",
         }],
-        "layout": _layout("Turns per day (last 90d)",
+        "layout": _layout("turns per day", exhibit="Fig. 1",
                           xaxis={"title": "day"},
-                          yaxis={"title": "turns"}),
+                          yaxis={"title": "turns / day"}),
     }
 
 
@@ -76,22 +127,19 @@ def tokens_by_model(conn: sqlite3.Connection) -> dict:
             seen_days.add(d)
             days.append(d)
 
-    palette = ["#7aa2ff", "#b5e3a2", "#ffb56b", "#ff7676", "#c792ea",
-               "#82d4dd", "#f6c177", "#94e2d5"]
     traces = []
     for i, (model, by_day) in enumerate(sorted(per_model.items())):
         traces.append({
-            "type": "scatter",
-            "mode": "lines",
+            "type": "scatter", "mode": "lines",
             "stackgroup": "one",
             "x": days,
             "y": [by_day.get(d, 0) for d in days],
             "name": model,
-            "line": {"color": palette[i % len(palette)]},
+            "line": {"color": LEDGER_PALETTE[i % len(LEDGER_PALETTE)], "width": 0.5},
         })
     return {
         "data": traces,
-        "layout": _layout("Tokens by model (stacked, daily)",
+        "layout": _layout("tokens by model (stacked, daily)", exhibit="Fig. 2",
                           xaxis={"title": "day"},
                           yaxis={"title": "tokens"}),
     }
@@ -126,15 +174,26 @@ def tool_heatmap(conn: sqlite3.Connection) -> dict:
         cell[(r["tool"], r["wk"])] = r["n"]
 
     z = [[cell.get((tool, wk), 0) for wk in weeks] for tool in tools]
+    # Custom warm colorscale: lamplit ink → phosphor amber → bright cream
+    ledger_scale = [
+        [0.00, "#1c1a13"],
+        [0.15, "#2a2620"],
+        [0.40, "#8a6f3d"],
+        [0.70, "#c4934a"],
+        [1.00, "#e8b04d"],
+    ]
     return {
         "data": [{
             "type": "heatmap",
-            "x": weeks,
-            "y": tools,
-            "z": z,
-            "colorscale": "Viridis",
+            "x": weeks, "y": tools, "z": z,
+            "colorscale": ledger_scale,
+            "showscale": True,
+            "colorbar": {"thickness": 8, "len": 0.7,
+                         "tickfont": {"family": "Geist Mono", "size": 9, "color": "#a89e84"},
+                         "outlinecolor": "#2a2620"},
+            "xgap": 1, "ygap": 1,
         }],
-        "layout": _layout("Tool calls heatmap (tool × ISO week)",
+        "layout": _layout("tool calls heatmap (tool × ISO week)", exhibit="Fig. 3",
                           xaxis={"title": "ISO week"},
                           yaxis={"title": "tool"}),
     }
@@ -157,14 +216,12 @@ def error_rate(conn: sqlite3.Connection) -> dict:
     y = [(100.0 * r["err_turns"] / r["turns"]) if r["turns"] else 0.0 for r in rows]
     return {
         "data": [{
-            "type": "scatter",
-            "mode": "lines+markers",
-            "x": x,
-            "y": y,
-            "name": "% with tool error",
-            "line": {"color": "#ff7676"},
+            "type": "scatter", "mode": "lines+markers",
+            "x": x, "y": y, "name": "% with tool error",
+            "line": {"color": "#c47a72", "width": 1.5},
+            "marker": {"color": "#c47a72", "size": 5},
         }],
-        "layout": _layout("Tool error rate (weekly)",
+        "layout": _layout("tool error rate (weekly)", exhibit="Fig. 4",
                           xaxis={"title": "ISO week"},
                           yaxis={"title": "% of turns", "ticksuffix": "%"}),
     }
@@ -199,11 +256,13 @@ def latency(conn: sqlite3.Connection) -> dict:
     return {
         "data": [
             {"type": "scatter", "mode": "lines+markers", "x": weeks, "y": p50,
-             "name": "p50", "line": {"color": "#7aa2ff"}},
+             "name": "p50", "line": {"color": "#7cb273", "width": 1.5},
+             "marker": {"size": 5}},
             {"type": "scatter", "mode": "lines+markers", "x": weeks, "y": p95,
-             "name": "p95", "line": {"color": "#ffb56b"}},
+             "name": "p95", "line": {"color": "#e8b04d", "width": 1.5},
+             "marker": {"size": 5}},
         ],
-        "layout": _layout("Latency (weekly p50/p95)",
+        "layout": _layout("latency (weekly p50 / p95)", exhibit="Fig. 5",
                           xaxis={"title": "ISO week"},
                           yaxis={"title": "ms"}),
     }
@@ -215,7 +274,7 @@ def annotations(conn: sqlite3.Connection) -> dict:
         "SELECT rating, COUNT(*) AS n FROM annotations GROUP BY rating"
     ).fetchall()
     labels_by_rating = {-1: "bad", 0: "neutral", 1: "good"}
-    color_by_rating = {-1: "#ff7676", 0: "#8a93a6", 1: "#b5e3a2"}
+    color_by_rating = {-1: "#c47a72", 0: "#8a8270", 1: "#7cb273"}
     by_rating = {r["rating"]: r["n"] for r in rows}
     ratings = [-1, 0, 1]
     return {
@@ -223,10 +282,12 @@ def annotations(conn: sqlite3.Connection) -> dict:
             "type": "pie",
             "labels": [labels_by_rating[r] for r in ratings],
             "values": [by_rating.get(r, 0) for r in ratings],
-            "marker": {"colors": [color_by_rating[r] for r in ratings]},
-            "hole": 0.4,
+            "marker": {"colors": [color_by_rating[r] for r in ratings],
+                       "line": {"color": "#1c1a13", "width": 2}},
+            "hole": 0.55,
+            "textfont": {"family": "Newsreader, serif", "color": "#e8e1cc", "size": 12},
         }],
-        "layout": _layout("Annotation ratings"),
+        "layout": _layout("annotation ratings", exhibit="Fig. 6"),
     }
 
 
@@ -248,14 +309,13 @@ def correction_rate(conn: sqlite3.Connection) -> dict:
     y = [(100.0 * r["followups"] / r["turns"]) if r["turns"] else 0.0 for r in rows]
     return {
         "data": [{
-            "type": "scatter",
-            "mode": "lines+markers",
-            "x": x,
-            "y": y,
-            "name": "% followed up",
-            "line": {"color": "#ffb56b"},
+            "type": "scatter", "mode": "lines+markers",
+            "x": x, "y": y, "name": "% followed up",
+            "line": {"color": "#e8b04d", "width": 1.5},
+            "marker": {"size": 5},
+            "fill": "tozeroy", "fillcolor": "rgba(232,176,77,0.08)",
         }],
-        "layout": _layout("Correction / follow-up rate (weekly)",
+        "layout": _layout("correction / follow-up rate (weekly)", exhibit="Fig. 7",
                           xaxis={"title": "ISO week"},
                           yaxis={"title": "% of turns", "ticksuffix": "%"}),
     }
@@ -274,15 +334,112 @@ def top_clusters(conn: sqlite3.Connection) -> dict:
     rows = list(reversed(rows))  # so largest bar appears at top
     return {
         "data": [{
-            "type": "bar",
-            "orientation": "h",
+            "type": "bar", "orientation": "h",
             "x": [r["member_count"] for r in rows],
-            "y": [r["label"] for r in rows],
-            "marker": {"color": "#7aa2ff"},
+            "y": [(r["label"][:48] + "…") if len(r["label"] or "") > 48 else (r["label"] or f"cluster #{r['id']}") for r in rows],
+            "marker": {"color": "#7cb273", "line": {"color": "#1c1a13", "width": 1}},
+            "text": [str(r["member_count"]) for r in rows],
+            "textposition": "outside",
+            "textfont": {"family": "Geist Mono, monospace", "size": 10, "color": "#a89e84"},
+            "cliponaxis": False,
         }],
-        "layout": _layout("Top 10 prompt clusters",
+        "layout": _layout("top 10 prompt clusters", exhibit="Fig. 8",
+                          xaxis={"title": "members", "showgrid": False},
+                          yaxis={"automargin": True,
+                                 "tickfont": {"family": "Newsreader, serif",
+                                              "size": 11, "color": "#a89e84"}},
+                          bargap=0.35),
+    }
+
+
+def cache_efficiency(conn: sqlite3.Connection) -> dict:
+    """Weekly prompt-caching hit ratio: cache_read / (cache_read + cache_creation).
+    A direct cost signal — higher = more savings from the Anthropic cache."""
+    rows = conn.execute(
+        """
+        SELECT strftime('%Y-W%W', started_at) AS wk,
+               SUM(COALESCE(cache_read_tokens, 0))     AS hit,
+               SUM(COALESCE(cache_creation_tokens, 0)) AS miss,
+               COUNT(*) AS turns
+        FROM turns
+        WHERE started_at >= date('now', '-180 days')
+        GROUP BY wk ORDER BY wk
+        """
+    ).fetchall()
+    weeks = [r["wk"] for r in rows]
+    hits = [int(r["hit"] or 0) for r in rows]
+    misses = [int(r["miss"] or 0) for r in rows]
+    pct = [
+        (100.0 * h / (h + m)) if (h + m) else 0.0
+        for h, m in zip(hits, misses)
+    ]
+    return {
+        "data": [
+            {"type": "bar", "x": weeks, "y": hits, "name": "cache read (hit)",
+             "marker": {"color": "#7cb273"}, "yaxis": "y2"},
+            {"type": "bar", "x": weeks, "y": misses, "name": "cache creation (miss)",
+             "marker": {"color": "#8a6f3d"}, "yaxis": "y2"},
+            {"type": "scatter", "mode": "lines+markers", "x": weeks, "y": pct,
+             "name": "hit ratio", "line": {"color": "#e8b04d", "width": 2},
+             "marker": {"size": 6}, "yaxis": "y"},
+        ],
+        "layout": _layout("cache efficiency (weekly hit ratio + token volume)",
+                          exhibit="Fig. 9",
+                          barmode="stack",
+                          xaxis={"title": "ISO week"},
+                          yaxis={"title": "hit %", "ticksuffix": "%",
+                                 "range": [0, 100], "side": "left"},
+                          yaxis2={**_LEDGER_AXIS, "title": {"text": "tokens",
+                                     "font": {"family": "Newsreader, serif",
+                                              "color": "#7a7259", "size": 11}},
+                                  "overlaying": "y", "side": "right",
+                                  "showgrid": False}),
+    }
+
+
+def cluster_correction_breakdown(conn: sqlite3.Connection) -> dict:
+    """For the top-10 clusters by size, what fraction of members triggered a
+    follow-up / correction? This is the telemetry-testing centerpiece — it
+    reveals which prompt families you keep correcting Claude on."""
+    rows = conn.execute(
+        """
+        SELECT pc.id, COALESCE(pc.label, 'cluster #' || pc.id) AS label,
+               pc.member_count,
+               COUNT(DISTINCT f.turn_id) AS corrected
+        FROM prompt_clusters pc
+        JOIN turn_cluster tc ON tc.cluster_id = pc.id
+        LEFT JOIN turn_followups f ON f.turn_id = tc.turn_id
+        GROUP BY pc.id
+        ORDER BY pc.member_count DESC
+        LIMIT 10
+        """
+    ).fetchall()
+    rows = list(reversed(rows))  # largest at top
+    labels = [(r["label"][:46] + "…") if len(r["label"]) > 46 else r["label"] for r in rows]
+    total = [int(r["member_count"]) for r in rows]
+    corrected = [int(r["corrected"]) for r in rows]
+    clean = [t - c for t, c in zip(total, corrected)]
+    pct = [(100.0 * c / t) if t else 0.0 for c, t in zip(corrected, total)]
+    return {
+        "data": [
+            {"type": "bar", "orientation": "h", "x": clean, "y": labels,
+             "name": "clean", "marker": {"color": "#7cb273"}},
+            {"type": "bar", "orientation": "h", "x": corrected, "y": labels,
+             "name": "corrected", "marker": {"color": "#c47a72"},
+             "text": [f"{p:.0f}%" if p > 0 else "" for p in pct],
+             "textposition": "outside",
+             "textfont": {"family": "Geist Mono, monospace", "size": 10,
+                          "color": "#c47a72"},
+             "cliponaxis": False},
+        ],
+        "layout": _layout("cluster correction breakdown (top 10 by size)",
+                          exhibit="Fig. 10",
+                          barmode="stack",
                           xaxis={"title": "members"},
-                          yaxis={"automargin": True}),
+                          yaxis={"automargin": True,
+                                 "tickfont": {"family": "Newsreader, serif",
+                                              "size": 11, "color": "#a89e84"}},
+                          bargap=0.35),
     }
 
 
@@ -322,4 +479,6 @@ CHARTS = {
     "annotations": annotations,
     "correction_rate": correction_rate,
     "top_clusters": top_clusters,
+    "cache_efficiency": cache_efficiency,
+    "cluster_correction_breakdown": cluster_correction_breakdown,
 }

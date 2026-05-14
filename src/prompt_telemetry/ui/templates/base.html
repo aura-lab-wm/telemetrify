@@ -6,7 +6,7 @@
   <title>{% block title %}prompt-telemetry{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   {% include "_icons.html" %}
   <header class="topbar">
     <a class="brand" href="/" aria-label="prompt-telemetry home">

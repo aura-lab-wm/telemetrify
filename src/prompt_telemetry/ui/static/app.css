@@ -528,7 +528,7 @@ body.v-page main { padding: 0; max-width: none; }
 body.v-page .topbar {
   background: rgba(0, 0, 0, 0.75);
   border-bottom: 1px solid var(--vborder);
-  padding: 14px 24px;
+  padding: 14px clamp(20px, 3vw, 56px);
   backdrop-filter: blur(8px);
   position: relative;
 }
@@ -566,7 +566,7 @@ body.v-page .topnav a.active {
   box-shadow: inset 0 0 0 1px rgba(255, 92, 0, 0.18);
 }
 
-body.v-page .search { max-width: 360px; }
+body.v-page .search { max-width: min(560px, 36vw); min-width: 240px; }
 body.v-page .search input {
   font-family: var(--vfont-mono); font-style: normal; font-size: 12px;
   background: var(--vsurface); color: var(--vfg);
@@ -620,8 +620,8 @@ body.v-page h1, body.v-page h2, body.v-page h3, body.v-page h4 {
 
 /* ─── v-page shell ──────────────────────────────────────────────────── */
 body.v-page .v-shell {
-  max-width: 1180px; margin: 0 auto;
-  padding: 56px 32px 96px;
+  width: 100%; max-width: none; margin: 0;
+  padding: 48px clamp(20px, 3vw, 56px) 96px;
   position: relative;
   animation: v-shell-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -851,6 +851,7 @@ body.v-page .ask-src-card-cwd {
 body.v-page .ask-x-answer-body {
   font: 15px/1.7 var(--vfont-sans); color: var(--vfg);
   letter-spacing: -0.005em;
+  max-width: 78ch;
 }
 body.v-page .ask-x-answer-body p { margin: 12px 0; }
 body.v-page .ask-x-answer-body p:first-child { margin-top: 0; }
@@ -1111,8 +1112,8 @@ body.v-page .queue-empty p { margin-top: 8px; font-size: 14px; }
    v-page idiom so they read as the same product as /ask + /queue.       */
 
 body.v-page .ledger-page {
-  max-width: 1280px; margin: 0 auto;
-  padding: 56px 32px 96px;
+  width: 100%; max-width: none; margin: 0;
+  padding: 48px clamp(20px, 3vw, 56px) 96px;
   animation: v-shell-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -1232,9 +1233,23 @@ body.v-page .plates.wide-then-two {
   grid-template-columns: 2fr 1fr 1fr;
   grid-template-rows: auto;
 }
-@media (max-width: 1000px) {
+/* Tablet & smaller laptop: collapse to single column */
+@media (max-width: 900px) {
   body.v-page .plates.two-up,
   body.v-page .plates.wide-then-two { grid-template-columns: 1fr; }
+}
+/* 14" laptop sweet spot (≥1280px): plates breathe a bit more */
+@media (min-width: 1280px) {
+  body.v-page .plate { min-height: 380px; }
+  body.v-page .chart { height: 360px; }
+  body.v-page .chart-tall { height: 480px; }
+}
+/* Larger external displays: tighter chart heights, bigger grids */
+@media (min-width: 1600px) {
+  body.v-page .plates.wide-then-two {
+    grid-template-columns: 1.5fr 1fr 1fr;
+  }
+  body.v-page .chart-tall { height: 520px; }
 }
 
 body.v-page .plate {
@@ -1305,7 +1320,7 @@ body.v-page .notify-dot {
    tweaks (drop the warm gradient seams, kill the gutter rail signature,
    normalise card chrome). */
 
-body.v-page main { max-width: 1280px; margin: 0 auto; padding: 32px; }
+body.v-page main { width: 100%; max-width: none; margin: 0; padding: 32px clamp(20px, 3vw, 56px); }
 
 body.v-page .turn-card,
 body.v-page .turns li,
@@ -1437,3 +1452,60 @@ body.v-page h3 { color: var(--ink-mid); text-transform: uppercase; letter-spacin
 
 /* search button color in topbar — make orange consistent */
 body.v-page .topbar { border-bottom-color: var(--rule); }
+
+/* ─── Responsive widths for the rest of the app ────────────────────── */
+
+/* /clusters — 2 columns on wide displays */
+@media (min-width: 1280px) {
+  body.v-page .cluster-list {
+    display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3);
+  }
+  body.v-page .cluster-list li { margin-bottom: 0; }
+}
+@media (min-width: 1700px) {
+  body.v-page .cluster-list { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+/* / (turns index) — widen sidebar on big screens */
+@media (min-width: 1280px) {
+  body.v-page .layout { grid-template-columns: 320px 1fr; gap: 24px; }
+}
+@media (min-width: 1700px) {
+  body.v-page .layout { grid-template-columns: 360px 1fr; gap: 28px; }
+}
+
+/* turn-card grid — show 2 search-result columns on wide screens */
+@media (min-width: 1500px) {
+  body.v-page .results {
+    display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3);
+  }
+  body.v-page .results > h2,
+  body.v-page .results > .stats,
+  body.v-page .results > .filter-bar { grid-column: 1 / -1; }
+}
+
+/* prompt + response bodies on turn detail — wider canvas */
+body.v-page .prompt-body,
+body.v-page .response-body { max-width: none; }
+
+/* meta lines wrap nicely on narrow screens */
+@media (max-width: 760px) {
+  body.v-page .topbar { flex-wrap: wrap; gap: 12px; }
+  body.v-page .topnav { order: 3; flex: 1 1 100%; }
+  body.v-page .search { max-width: none; }
+  body.v-page main { padding: 24px 16px; }
+  body.v-page .v-shell,
+  body.v-page .ledger-page { padding: 32px 16px 64px; }
+  body.v-page .masthead-title,
+  body.v-page .ask-title { font-size: clamp(36px, 9vw, 48px); }
+  body.v-page .queue-card-row {
+    grid-template-columns: 24px 1fr;
+    grid-template-rows: auto auto;
+    gap: 10px;
+  }
+  body.v-page .queue-card-row > .queue-checkbox { grid-column: 1; grid-row: 1; }
+  body.v-page .queue-card-row > .queue-rank      { display: none; }
+  body.v-page .queue-card-row > .queue-score-block { grid-column: 2; grid-row: 1; flex-direction: row; align-items: center; gap: 12px; }
+  body.v-page .queue-card-row > .queue-body       { grid-column: 1 / -1; grid-row: 2; }
+  body.v-page .queue-card-row > .queue-right     { display: none; }
+}

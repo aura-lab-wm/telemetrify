@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}rerun queue · prompt-telemetry{% endblock %}
+{% block content %}
+<section class="queue-page">
+  <header class="masthead">
+    <div class="masthead-rule">
+      <span class="folio">№ 03</span>
+      <span class="folio-section">smart rerun queue</span>
+      <span class="folio-spacer"></span>
+      <span class="folio-meta">{{ candidates|length }} candidates</span>
+    </div>
+    <h1 class="masthead-title">Worth Re-asking</h1>
+    <p class="masthead-sub">Turns ranked by cluster weight, age, quality, and correction signal. Excludes any turn replayed in the last 30 days.</p>
+  </header>
+
+  <form id="queue-form" class="queue-form" method="post" action="/api/queue/rerun-all">
+    <div class="queue-toolbar">
+      <button type="button" id="queue-select-all" class="queue-btn-secondary">select all</button>
+      <button type="button" id="queue-clear"      class="queue-btn-secondary">clear</button>
+      <span class="queue-budget-preview">
+        <span id="queue-count">0</span> selected ·
+        est <span id="queue-cost">$0.00</span>
+      </span>
+      <button type="submit" class="queue-btn-primary" id="queue-submit" disabled>rerun selected</button>
+    </div>
+
+    <ol class="queue-list">
+      {% for c in candidates %}
+        <li class="queue-card" data-cost="{{ c.estimated_cost_usd }}">
+          <label class="queue-card-row">
+            <input type="checkbox" name="turn_ids" value="{{ c.turn_id }}" class="queue-checkbox">
+            <div class="queue-card-body">
+              <header>
+                <a href="/turns/{{ c.turn_id }}" class="queue-turn-link">turn #{{ c.turn_id }}</a>
+                <span class="queue-score">score {{ '%.3f' % c.score }}</span>
+                {% if c.quality is not none %}<span class="queue-q queue-q-{{ c.quality }}">q={{ c.quality }}</span>{% else %}<span class="queue-q queue-q-na">ungraded</span>{% endif %}
+                {% if c.has_followup %}<span class="queue-flag">↩ corrected</span>{% endif %}
+                <span class="queue-age">{{ c.days_old|int }}d old</span>
+                {% if c.cluster_label %}<a class="queue-cluster" href="/clusters/{{ c.cluster_id }}">⊕ {{ c.cluster_label[:40] }}</a>{% endif %}
+              </header>
+              <div class="queue-snippet">{{ c.user_text_snippet }}</div>
+              <footer class="queue-meta">
+                <code>{{ c.cwd }}</code> · {{ c.model }} ·
+                cluster <b>{{ c.cluster_members }}</b> members ·
+                est <b>${{ '%.2f' % c.estimated_cost_usd }}</b>
+              </footer>
+            </div>
+          </label>
+        </li>
+      {% else %}
+        <li class="queue-empty">no candidates — your corpus is fresh or fully replayed.</li>
+      {% endfor %}
+    </ol>
+  </form>
+</section>
+
+<script src="/static/queue.js"></script>
+{% endblock %}

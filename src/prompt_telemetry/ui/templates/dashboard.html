@@ -17,6 +17,15 @@
     </p>
   </header>
 
+  <!-- ── Daily digest banner (Round C1) ───────────────────────────── -->
+  <aside class="digest-banner" id="digest-banner" hidden>
+    <div class="digest-header">
+      <span class="digest-tag">today's digest</span>
+      <span class="digest-date" id="digest-date">—</span>
+    </div>
+    <p class="digest-body" id="digest-body"></p>
+  </aside>
+
   <!-- ── Narrative fold ──────────────────────────────────────────── -->
   <section class="fold">
     <div class="fold-row" id="fold-row">
@@ -91,6 +100,22 @@
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="/static/dashboard.js"></script>
 <script src="/static/push-client.js"></script>
+<script>
+  // Daily-digest banner — show today's summary if generated.
+  (async () => {
+    try {
+      const res = await fetch("/api/digest/today");
+      const j = await res.json();
+      if (!j.summary) return;
+      const banner = document.getElementById("digest-banner");
+      const date = document.getElementById("digest-date");
+      const body = document.getElementById("digest-body");
+      date.textContent = j.date;
+      body.textContent = j.summary;
+      banner.hidden = false;
+    } catch (e) { /* silent */ }
+  })();
+</script>
 <script>
   (function () {
     const btn = document.getElementById("notify-toggle");

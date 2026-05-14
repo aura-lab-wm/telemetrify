@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}ask · prompt-telemetry{% endblock %}
+{% block content %}
+<section class="ask-page">
+  <header class="masthead">
+    <div class="masthead-rule">
+      <span class="folio">№ 02</span>
+      <span class="folio-section">ask the ledger</span>
+      <span class="folio-spacer"></span>
+      <span class="folio-meta" id="ask-status">idle</span>
+    </div>
+    <h1 class="masthead-title">Ask the Ledger</h1>
+    <p class="masthead-sub">Natural-language query over the corpus. Citations link to the underlying turns.</p>
+  </header>
+
+  <form id="ask-form" class="ask-form" autocomplete="off">
+    <label for="ask-input" class="visually-hidden">your question</label>
+    <input id="ask-input" name="q" type="text" placeholder="When did I last debug a sqlite-vec issue?" autofocus>
+    <button type="submit" class="ask-btn">ask</button>
+  </form>
+
+  <article class="ask-conversation" id="ask-conversation">
+    <p class="ask-empty">Try: <em>"Show me where I struggled with FastAPI auth."</em> · <em>"How often did Claude refuse my prompts last week?"</em> · <em>"Summarize sessions about the dashboard redesign."</em></p>
+  </article>
+</section>
+
+<script src="/static/ask.js"></script>
+{% endblock %}

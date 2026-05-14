@@ -57,9 +57,8 @@ QUEUE_RATIONALE = {
 
 DIGEST = {
     "summary":     {"type": "str", "max_len": 1200},
-    "top_clusters": {"type": "obj", "fields": {}},   # opaque list of {id, label, count}
-    "regressions": {"type": "obj", "fields": {}},
-    "suggestions": {"type": "obj", "fields": {}},
+    # top_clusters / regressions / suggestions are advisory only — validator
+    # leaves them unconstrained (the LLM can return list or object freely).
 }
 
 ANNOTATE_EXPECTED = {

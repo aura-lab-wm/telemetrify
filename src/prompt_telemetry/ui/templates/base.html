@@ -22,6 +22,14 @@
         <svg class="icon" aria-hidden="true"><use href="#i-clusters"/></svg>
         <span>clusters</span>
       </a>
+      <a href="/ask" {% if request and '/ask' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+        <span>ask</span>
+      </a>
+      <a href="/queue" {% if request and '/queue' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>
+        <span>queue</span>
+      </a>
       <a href="/dashboard" {% if request and '/dashboard' in request.url.path %}class="active"{% endif %}>
         <svg class="icon" aria-hidden="true"><use href="#i-dashboard"/></svg>
         <span>dashboard</span>

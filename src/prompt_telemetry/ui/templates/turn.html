@@ -82,7 +82,8 @@
         </label>
       </div>
       <label>expected behavior
-        <textarea name="expected_behavior" rows="2" placeholder="what *should* have happened?">{{ annotation.expected_behavior if annotation else '' }}</textarea>
+        <textarea id="expected-behavior-input" name="expected_behavior" rows="2" placeholder="what *should* have happened?">{{ annotation.expected_behavior if annotation else '' }}</textarea>
+        <button type="button" class="suggest-btn" id="suggest-expected" data-turn-id="{{ turn.id }}" title="generate a suggestion via LLM">✦ suggest</button>
       </label>
       <label>notes
         <textarea name="notes" rows="2" placeholder="free text">{{ annotation.notes if annotation else '' }}</textarea>
@@ -97,6 +98,34 @@
       </div>
     </form>
   </section>
+
+  <script>
+    (function () {
+      const btn = document.getElementById("suggest-expected");
+      const ta  = document.getElementById("expected-behavior-input");
+      if (!btn || !ta) return;
+      btn.addEventListener("click", async () => {
+        const prev = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "✦ thinking…";
+        try {
+          const res = await fetch(`/api/annotation/suggest_expected/${btn.dataset.turnId}`, { method: "POST" });
+          const j = await res.json();
+          if (j.expected_behavior) {
+            ta.value = j.expected_behavior;
+            ta.dispatchEvent(new Event("input"));
+            btn.textContent = "✓ inserted";
+          } else {
+            btn.textContent = "× failed";
+          }
+        } catch (e) {
+          btn.textContent = "× error";
+        } finally {
+          setTimeout(() => { btn.disabled = false; btn.textContent = prev; }, 1800);
+        }
+      });
+    })();
+  </script>
 
   <h3>prompt</h3>
   <div class="prompt-body">{{ turn.user_text|md|safe }}</div>

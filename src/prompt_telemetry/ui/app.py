@@ -443,6 +443,139 @@ def classifier_status():
     return JSONResponse(GraderClassifier().latest_model_meta() or {"trained": False})
 
 
+# ─── Ask-the-Ledger (Round B1) ─────────────────────────────────────────
+@app.get("/ask", response_class=HTMLResponse)
+def ask_page(request: Request):
+    return _render("ask.html", {"q": ""})
+
+
+@app.post("/api/ask")
+async def api_ask(request: Request):
+    """Stream the Q&A pipeline as SSE: plan → sources → delta → done."""
+    import json as _json
+    body = await request.json()
+    question = (body.get("question") or "").strip()
+    if not question:
+        return JSONResponse({"error": "missing question"}, status_code=400)
+
+    def _gen():
+        from ..ai.qa import stream_answer
+        conn = connect()
+        try:
+            for evt in stream_answer(conn, question):
+                yield f"data: {_json.dumps(evt)}\n\n"
+        finally:
+            try: conn.close()
+            except Exception: pass
+
+    return StreamingResponse(_gen(), media_type="text/event-stream",
+                              headers={"Cache-Control": "no-cache",
+                                       "X-Accel-Buffering": "no"})
+
+
+# ─── Smart Rerun Queue (Round B2) ──────────────────────────────────────
+@app.get("/queue", response_class=HTMLResponse)
+def queue_page(request: Request):
+    from ..ai.queue import score_candidates
+    candidates = score_candidates(connect(), k=20)
+    return _render("queue.html", {"candidates": candidates, "q": ""})
+
+
+@app.get("/api/queue", response_class=JSONResponse)
+def api_queue():
+    from ..ai.queue import score_candidates
+    return JSONResponse({"candidates": score_candidates(connect(), k=20)})
+
+
+# ─── Suggest expected_behavior (Round C2) ──────────────────────────────
+@app.post("/api/annotation/suggest_expected/{turn_id}", response_class=JSONResponse)
+def api_annotation_suggest(turn_id: int):
+    from ..ai.annotate import suggest_expected
+    text = suggest_expected(connect(), turn_id)
+    if not text:
+        return JSONResponse({"error": "could not generate suggestion"}, status_code=503)
+    return JSONResponse({"expected_behavior": text})
+
+
+# ─── Prompt diet (Round C3) ────────────────────────────────────────────
+@app.get("/api/diet/cluster/{cluster_id}", response_class=JSONResponse)
+def api_diet_for_cluster(cluster_id: int):
+    rows = connect().execute(
+        "SELECT * FROM prompt_diet_suggestions WHERE cluster_id = ? ORDER BY id DESC",
+        (cluster_id,),
+    ).fetchall()
+    return JSONResponse({"suggestions": [dict(r) for r in rows]})
+
+
+@app.post("/api/diet/cluster/{cluster_id}/propose")
+def api_diet_propose(cluster_id: int):
+    from ..ai.diet import propose_for_cluster
+    r = propose_for_cluster(connect(), cluster_id)
+    if not r:
+        return JSONResponse({"error": "could not propose"}, status_code=503)
+    return JSONResponse(r)
+
+
+# ─── Daily digest (Round C1) ───────────────────────────────────────────
+@app.get("/api/digest/today", response_class=JSONResponse)
+def api_digest_today():
+    from datetime import date
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT date, summary, model, cost_usd, generated_at FROM daily_digests "
+            "WHERE date = ? ORDER BY generated_at DESC LIMIT 1",
+            (date.today().isoformat(),),
+        ).fetchone()
+    except Exception:
+        # daily_digests table doesn't exist yet (no digest has been generated)
+        row = None
+    if not row:
+        return JSONResponse({"date": date.today().isoformat(), "summary": None})
+    return JSONResponse(dict(row))
+
+
+@app.post("/api/digest/generate")
+async def api_digest_generate(request: Request, background: BackgroundTasks):
+    """Trigger digest generation in the background. Returns 202."""
+    body = {}
+    try: body = await request.json()
+    except Exception: pass
+    day = body.get("date")
+    notify_push = bool(body.get("notify"))
+
+    def _go():
+        from ..ai.digest import generate
+        try: generate(connect(), day=day, notify_push=notify_push)
+        except Exception: pass
+
+    background.add_task(_go)
+    return JSONResponse({"status": "scheduled"}, status_code=202)
+
+
+@app.post("/api/queue/rerun-all")
+async def api_queue_rerun_all(request: Request, background: BackgroundTasks):
+    form = await request.form()
+    raw_ids = form.getlist("turn_ids")
+    turn_ids: list[int] = []
+    for s in raw_ids:
+        try: turn_ids.append(int(s))
+        except ValueError: continue
+    if not turn_ids:
+        return RedirectResponse("/queue", status_code=303)
+
+    def _run_all(ids: list[int]) -> None:
+        from ..rerun import run_rerun
+        for tid in ids:
+            try:
+                run_rerun(tid, budget_usd=0.50)
+            except Exception:
+                continue
+
+    background.add_task(_run_all, turn_ids)
+    return RedirectResponse(f"/queue?queued={len(turn_ids)}", status_code=303)
+
+
 @app.get("/api/classifier/predict/{turn_id}", response_class=JSONResponse)
 def classifier_predict(turn_id: int):
     return JSONResponse(GraderClassifier().predict(connect(), turn_id))

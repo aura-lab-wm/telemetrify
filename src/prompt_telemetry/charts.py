@@ -15,40 +15,40 @@ import sqlite3
 from collections import defaultdict
 from typing import Any
 
-# ─── Telemetry Ledger Plotly theme ─────────────────────────────────────────
-# Warm lamplit palette. Serif title, mono ticks. No grid emphasis. Designed
-# to read as a logbook plate, not a SaaS dashboard tile.
-LEDGER_PALETTE = ["#e8b04d", "#7cb273", "#b89968", "#c47a72", "#8a8270",
-                  "#a87f5f", "#5d8a8a", "#c4934a", "#9bb87c", "#c5b083"]
+# ─── Telemetry · Vercel Mode Plotly theme ────────────────────────────────
+# Pure-black canvas. Single signature orange (#ff5c00). Geist Mono throughout.
+# Aligns with the v-page CSS scope shared with /ask and /queue.
+LEDGER_PALETTE = ["#ff5c00", "#ff7d33", "#f59e0b", "#22c55e", "#ef4444",
+                  "#a78bfa", "#06b6d4", "#facc15", "#fb7185", "#94a3b8"]
 
 _LEDGER_AXIS = {
-    "gridcolor": "#221f19",
-    "linecolor": "#2a2620",
-    "zerolinecolor": "#2a2620",
-    "tickcolor": "#3a3528",
-    "tickfont": {"family": "Geist Mono, IBM Plex Mono, monospace",
-                 "color": "#a89e84", "size": 10},
-    "title": {"font": {"family": "Newsreader, serif", "color": "#7a7259",
-                       "size": 11}},
+    "gridcolor":     "rgba(255,255,255,0.05)",
+    "linecolor":     "rgba(255,255,255,0.10)",
+    "zerolinecolor": "rgba(255,255,255,0.07)",
+    "tickcolor":     "rgba(255,255,255,0.10)",
+    "tickfont": {"family": "Geist Mono, JetBrains Mono, monospace",
+                 "color": "#a1a1aa", "size": 10},
+    "title": {"font": {"family": "Geist, Inter, sans-serif",
+                       "color": "#71717a", "size": 11}},
     "automargin": True,
 }
 
 _LEDGER_BASE = {
-    "paper_bgcolor": "#1c1a13",
-    "plot_bgcolor":  "#1c1a13",
-    "font": {"family": "Geist Mono, IBM Plex Mono, monospace",
-             "color": "#a89e84", "size": 11},
+    "paper_bgcolor": "#0a0a0a",
+    "plot_bgcolor":  "#0a0a0a",
+    "font": {"family": "Geist Mono, JetBrains Mono, monospace",
+             "color": "#a1a1aa", "size": 11},
     "margin": {"l": 56, "r": 24, "t": 56, "b": 44},
     "xaxis": _LEDGER_AXIS,
     "yaxis": _LEDGER_AXIS,
     "colorway": LEDGER_PALETTE,
-    "legend": {"font": {"family": "Newsreader, serif", "size": 11,
-                        "color": "#a89e84"},
+    "legend": {"font": {"family": "Geist, Inter, sans-serif", "size": 11,
+                        "color": "#a1a1aa"},
                "bgcolor": "rgba(0,0,0,0)", "borderwidth": 0,
                "orientation": "h", "y": -0.18, "x": 0},
-    "hoverlabel": {"bgcolor": "#232017", "bordercolor": "#3a3528",
+    "hoverlabel": {"bgcolor": "#111111", "bordercolor": "rgba(255,92,0,0.4)",
                    "font": {"family": "Geist Mono, monospace",
-                            "color": "#e8e1cc", "size": 11}},
+                            "color": "#fafafa", "size": 11}},
 }
 
 
@@ -63,8 +63,8 @@ def _layout(title: str, exhibit: str | None = None, **extra: Any) -> dict:
         **_LEDGER_BASE,
         "title": {
             "text": caption,
-            "font": {"family": "Newsreader, serif", "size": 15,
-                     "color": "#e8e1cc"},
+            "font": {"family": "Geist, Inter, sans-serif", "size": 15,
+                     "color": "#fafafa", "weight": 600},
             "x": 0, "xanchor": "left", "y": 0.97, "yanchor": "top",
             "pad": {"l": 0, "t": 4},
         },
@@ -93,9 +93,9 @@ def turns_per_day(conn: sqlite3.Connection) -> dict:
         "data": [{
             "type": "scatter", "mode": "lines",
             "x": x, "y": y, "name": "turns",
-            "line": {"color": "#e8b04d", "width": 1.5, "shape": "spline", "smoothing": 0.4},
+            "line": {"color": "#ff5c00", "width": 1.5, "shape": "spline", "smoothing": 0.4},
             "fill": "tozeroy",
-            "fillcolor": "rgba(232,176,77,0.10)",
+            "fillcolor": "rgba(255,92,0,0.10)",
         }],
         "layout": _layout("turns per day", exhibit="Fig. 1",
                           xaxis={"title": "day"},
@@ -176,11 +176,11 @@ def tool_heatmap(conn: sqlite3.Connection) -> dict:
     z = [[cell.get((tool, wk), 0) for wk in weeks] for tool in tools]
     # Custom warm colorscale: lamplit ink → phosphor amber → bright cream
     ledger_scale = [
-        [0.00, "#1c1a13"],
-        [0.15, "#2a2620"],
-        [0.40, "#8a6f3d"],
-        [0.70, "#c4934a"],
-        [1.00, "#e8b04d"],
+        [0.00, "#0a0a0a"],
+        [0.15, "rgba(255,255,255,0.10)"],
+        [0.40, "#52525b"],
+        [0.70, "#f59e0b"],
+        [1.00, "#ff5c00"],
     ]
     return {
         "data": [{
@@ -189,8 +189,8 @@ def tool_heatmap(conn: sqlite3.Connection) -> dict:
             "colorscale": ledger_scale,
             "showscale": True,
             "colorbar": {"thickness": 8, "len": 0.7,
-                         "tickfont": {"family": "Geist Mono", "size": 9, "color": "#a89e84"},
-                         "outlinecolor": "#2a2620"},
+                         "tickfont": {"family": "Geist Mono", "size": 9, "color": "#a1a1aa"},
+                         "outlinecolor": "rgba(255,255,255,0.10)"},
             "xgap": 1, "ygap": 1,
         }],
         "layout": _layout("tool calls heatmap (tool × ISO week)", exhibit="Fig. 3",
@@ -218,8 +218,8 @@ def error_rate(conn: sqlite3.Connection) -> dict:
         "data": [{
             "type": "scatter", "mode": "lines+markers",
             "x": x, "y": y, "name": "% with tool error",
-            "line": {"color": "#c47a72", "width": 1.5},
-            "marker": {"color": "#c47a72", "size": 5},
+            "line": {"color": "#ef4444", "width": 1.5},
+            "marker": {"color": "#ef4444", "size": 5},
         }],
         "layout": _layout("tool error rate (weekly)", exhibit="Fig. 4",
                           xaxis={"title": "ISO week"},
@@ -256,10 +256,10 @@ def latency(conn: sqlite3.Connection) -> dict:
     return {
         "data": [
             {"type": "scatter", "mode": "lines+markers", "x": weeks, "y": p50,
-             "name": "p50", "line": {"color": "#7cb273", "width": 1.5},
+             "name": "p50", "line": {"color": "#22c55e", "width": 1.5},
              "marker": {"size": 5}},
             {"type": "scatter", "mode": "lines+markers", "x": weeks, "y": p95,
-             "name": "p95", "line": {"color": "#e8b04d", "width": 1.5},
+             "name": "p95", "line": {"color": "#ff5c00", "width": 1.5},
              "marker": {"size": 5}},
         ],
         "layout": _layout("latency (weekly p50 / p95)", exhibit="Fig. 5",
@@ -274,7 +274,7 @@ def annotations(conn: sqlite3.Connection) -> dict:
         "SELECT rating, COUNT(*) AS n FROM annotations GROUP BY rating"
     ).fetchall()
     labels_by_rating = {-1: "bad", 0: "neutral", 1: "good"}
-    color_by_rating = {-1: "#c47a72", 0: "#8a8270", 1: "#7cb273"}
+    color_by_rating = {-1: "#ef4444", 0: "#8a8270", 1: "#22c55e"}
     by_rating = {r["rating"]: r["n"] for r in rows}
     ratings = [-1, 0, 1]
     return {
@@ -283,9 +283,9 @@ def annotations(conn: sqlite3.Connection) -> dict:
             "labels": [labels_by_rating[r] for r in ratings],
             "values": [by_rating.get(r, 0) for r in ratings],
             "marker": {"colors": [color_by_rating[r] for r in ratings],
-                       "line": {"color": "#1c1a13", "width": 2}},
+                       "line": {"color": "#0a0a0a", "width": 2}},
             "hole": 0.55,
-            "textfont": {"family": "Newsreader, serif", "color": "#e8e1cc", "size": 12},
+            "textfont": {"family": "Newsreader, serif", "color": "#fafafa", "size": 12},
         }],
         "layout": _layout("annotation ratings", exhibit="Fig. 6"),
     }
@@ -311,9 +311,9 @@ def correction_rate(conn: sqlite3.Connection) -> dict:
         "data": [{
             "type": "scatter", "mode": "lines+markers",
             "x": x, "y": y, "name": "% followed up",
-            "line": {"color": "#e8b04d", "width": 1.5},
+            "line": {"color": "#ff5c00", "width": 1.5},
             "marker": {"size": 5},
-            "fill": "tozeroy", "fillcolor": "rgba(232,176,77,0.08)",
+            "fill": "tozeroy", "fillcolor": "rgba(255,92,0,0.08)",
         }],
         "layout": _layout("correction / follow-up rate (weekly)", exhibit="Fig. 7",
                           xaxis={"title": "ISO week"},
@@ -337,17 +337,17 @@ def top_clusters(conn: sqlite3.Connection) -> dict:
             "type": "bar", "orientation": "h",
             "x": [r["member_count"] for r in rows],
             "y": [(r["label"][:48] + "…") if len(r["label"] or "") > 48 else (r["label"] or f"cluster #{r['id']}") for r in rows],
-            "marker": {"color": "#7cb273", "line": {"color": "#1c1a13", "width": 1}},
+            "marker": {"color": "#22c55e", "line": {"color": "#0a0a0a", "width": 1}},
             "text": [str(r["member_count"]) for r in rows],
             "textposition": "outside",
-            "textfont": {"family": "Geist Mono, monospace", "size": 10, "color": "#a89e84"},
+            "textfont": {"family": "Geist Mono, monospace", "size": 10, "color": "#a1a1aa"},
             "cliponaxis": False,
         }],
         "layout": _layout("top 10 prompt clusters", exhibit="Fig. 8",
                           xaxis={"title": "members", "showgrid": False},
                           yaxis={"automargin": True,
                                  "tickfont": {"family": "Newsreader, serif",
-                                              "size": 11, "color": "#a89e84"}},
+                                              "size": 11, "color": "#a1a1aa"}},
                           bargap=0.35),
     }
 
@@ -376,11 +376,11 @@ def cache_efficiency(conn: sqlite3.Connection) -> dict:
     return {
         "data": [
             {"type": "bar", "x": weeks, "y": hits, "name": "cache read (hit)",
-             "marker": {"color": "#7cb273"}, "yaxis": "y2"},
+             "marker": {"color": "#22c55e"}, "yaxis": "y2"},
             {"type": "bar", "x": weeks, "y": misses, "name": "cache creation (miss)",
-             "marker": {"color": "#8a6f3d"}, "yaxis": "y2"},
+             "marker": {"color": "#52525b"}, "yaxis": "y2"},
             {"type": "scatter", "mode": "lines+markers", "x": weeks, "y": pct,
-             "name": "hit ratio", "line": {"color": "#e8b04d", "width": 2},
+             "name": "hit ratio", "line": {"color": "#ff5c00", "width": 2},
              "marker": {"size": 6}, "yaxis": "y"},
         ],
         "layout": _layout("cache efficiency (weekly hit ratio + token volume)",
@@ -391,7 +391,7 @@ def cache_efficiency(conn: sqlite3.Connection) -> dict:
                                  "range": [0, 100], "side": "left"},
                           yaxis2={**_LEDGER_AXIS, "title": {"text": "tokens",
                                      "font": {"family": "Newsreader, serif",
-                                              "color": "#7a7259", "size": 11}},
+                                              "color": "#71717a", "size": 11}},
                                   "overlaying": "y", "side": "right",
                                   "showgrid": False}),
     }
@@ -423,13 +423,13 @@ def cluster_correction_breakdown(conn: sqlite3.Connection) -> dict:
     return {
         "data": [
             {"type": "bar", "orientation": "h", "x": clean, "y": labels,
-             "name": "clean", "marker": {"color": "#7cb273"}},
+             "name": "clean", "marker": {"color": "#22c55e"}},
             {"type": "bar", "orientation": "h", "x": corrected, "y": labels,
-             "name": "corrected", "marker": {"color": "#c47a72"},
+             "name": "corrected", "marker": {"color": "#ef4444"},
              "text": [f"{p:.0f}%" if p > 0 else "" for p in pct],
              "textposition": "outside",
              "textfont": {"family": "Geist Mono, monospace", "size": 10,
-                          "color": "#c47a72"},
+                          "color": "#ef4444"},
              "cliponaxis": False},
         ],
         "layout": _layout("cluster correction breakdown (top 10 by size)",
@@ -438,7 +438,7 @@ def cluster_correction_breakdown(conn: sqlite3.Connection) -> dict:
                           xaxis={"title": "members"},
                           yaxis={"automargin": True,
                                  "tickfont": {"family": "Newsreader, serif",
-                                              "size": 11, "color": "#a89e84"}},
+                                              "size": 11, "color": "#a1a1aa"}},
                           bargap=0.35),
     }
 

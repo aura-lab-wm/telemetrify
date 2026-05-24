@@ -72,6 +72,44 @@
       </form>
     </details>
 
+    {% if mode != 'search' and not active_filters %}
+    <section class="pulse-card" data-state="loading" aria-label="live activity">
+      <header class="pulse-card__head">
+        <span class="pulse-card__live">
+          <svg class="pulse-card__dot" aria-hidden="true"><use href="#i-pulse-live"/></svg>
+          <span class="pulse-card__ago">checking…</span>
+        </span>
+        <span class="pulse-card__d24">
+          last 24h ·
+          <span data-pulse="d24-turns">—</span> turns ·
+          <span data-pulse="d24-tokens">—</span> tokens ·
+          <span data-pulse="d24-errors">—</span> errors
+          <svg class="pulse-spark" width="220" height="28" aria-hidden="true"></svg>
+        </span>
+      </header>
+
+      <div class="pulse-card__body">
+        <div class="pulse-stat-row">
+          <span class="pulse-eyebrow">last hour</span>
+          <span class="pulse-stat"><b data-pulse="hr-turns">—</b> turns</span>
+          <span class="pulse-stat"><b data-pulse="hr-tokens">—</b> tokens</span>
+          <span class="pulse-stat"><b data-pulse="hr-errors">—</b> errors</span>
+          <span class="pulse-stat pulse-stat--quiet">
+            top <span data-pulse="hr-model">—</span> in <span data-pulse="hr-cwd">—</span>
+          </span>
+        </div>
+
+        <ol class="pulse-recent" data-pulse="recent">
+          <li class="pulse-recent__row pulse-recent__row--empty">loading…</li>
+        </ol>
+      </div>
+
+      <footer class="pulse-card__foot">
+        Live capture · polls every 30s · new to telemetrify? <a href="/start">start here →</a>
+      </footer>
+    </section>
+    {% endif %}
+
     <h2>{% if mode == 'search' %}results for "{{ q }}"{% else %}most recent turns{% endif %}</h2>
     {% for r in results %}
       <article class="turn-card">

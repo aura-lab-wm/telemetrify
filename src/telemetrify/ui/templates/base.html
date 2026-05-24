@@ -28,6 +28,10 @@
     </a>
     <span class="topbar-rule" aria-hidden="true"></span>
     <nav class="topnav">
+      <a href="/start" {% if request and '/start' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-start"/></svg>
+        <span>Start</span>
+      </a>
       <a href="/" {% if request and request.url.path == '/' %}class="active"{% endif %}>
         <svg class="icon" aria-hidden="true"><use href="#i-turns"/></svg>
         <span>Turns</span>
@@ -59,6 +63,12 @@
       </span>
       <button type="submit" class="search-submit-sr" aria-label="search">search</button>
     </form>
+    <a class="topbar-pulse" href="/" data-state="loading"
+       aria-label="capture status — click to go home"
+       title="capture status — click to go home">
+      <svg class="topbar-pulse__dot" aria-hidden="true"><use href="#i-pulse-live"/></svg>
+      <span class="topbar-pulse__label">checking…</span>
+    </a>
   </header>
   <main>
     {% block content %}{% endblock %}
@@ -82,5 +92,7 @@
       });
     })();
   </script>
+  <script src="/static/utils.js"></script>
+  <script src="/static/pulse.js"></script>
 </body>
 </html>

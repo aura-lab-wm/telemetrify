@@ -31,7 +31,9 @@ _LEDGER_AXIS = {
     "tickfont": {"family": "Geist Mono, JetBrains Mono, monospace",
                  "color": "#a1a1aa", "size": 10},
     "title": {"font": {"family": "Geist, Inter, sans-serif",
-                       "color": "#71717a", "size": 11}},
+                       "color": "#71717a", "size": 11},
+              # keeps the axis title clear of the legend strip below
+              "standoff": 14},
     "automargin": True,
 }
 
@@ -40,14 +42,20 @@ _LEDGER_BASE = {
     "plot_bgcolor":  "#0a0a0a",
     "font": {"family": "Geist Mono, JetBrains Mono, monospace",
              "color": "#a1a1aa", "size": 11},
-    "margin": {"l": 56, "r": 24, "t": 56, "b": 44},
+    # extra bottom margin so the horizontal legend doesn't collide with
+    # the x-axis title (e.g. "ISO week")
+    "margin": {"l": 56, "r": 24, "t": 56, "b": 84},
     "xaxis": _LEDGER_AXIS,
     "yaxis": _LEDGER_AXIS,
     "colorway": LEDGER_PALETTE,
+    # legend lives well below the plot area and is anchored from the top
+    # so its rows grow downward instead of swallowing the axis title
     "legend": {"font": {"family": "Geist, Inter, sans-serif", "size": 11,
                         "color": "#a1a1aa"},
                "bgcolor": "rgba(0,0,0,0)", "borderwidth": 0,
-               "orientation": "h", "y": -0.18, "x": 0},
+               "orientation": "h",
+               "yanchor": "top", "y": -0.32,
+               "xanchor": "left", "x": 0},
     "hoverlabel": {"bgcolor": "#111111", "bordercolor": "rgba(255,92,0,0.4)",
                    "font": {"family": "Geist Mono, monospace",
                             "color": "#fafafa", "size": 11}},

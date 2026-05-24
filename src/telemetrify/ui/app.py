@@ -306,6 +306,23 @@ def dashboard(request: Request):
     return _render("dashboard.html", {"q": ""})
 
 
+@app.get("/start", response_class=HTMLResponse)
+def start(request: Request):
+    """Newbie landing: 30-second tour + per-section explainers + search syntax.
+
+    Detects an empty DB (no turns) and swaps in a 'wire your Stop hook'
+    first-run block instead of the tour.
+    """
+    c = connect()
+    r = c.execute("SELECT COUNT(*) AS n FROM turns").fetchone()
+    turns_total = int(r["n"] or 0)
+    today_iso = c.execute("SELECT date('now') AS d").fetchone()["d"]
+    return _render(
+        "start.html",
+        {"q": "", "turns_total": turns_total, "today": today_iso, "request": request},
+    )
+
+
 @app.get("/api/dashboard/headline", response_class=JSONResponse)
 def dashboard_headline():
     """Narrative-fold data: sessions, turns, first/last entry, follow-up rate,
@@ -349,6 +366,144 @@ def dashboard_headline():
         "cache_hit_pct": (100.0 * cache_hit / (cache_hit + cache_miss)) if (cache_hit + cache_miss) else 0.0,
         "top_tool": dict(top_tool) if top_tool else None,
         "top_model": dict(top_model) if top_model else None,
+    })
+
+
+@app.get("/api/pulse", response_class=JSONResponse)
+def api_pulse():
+    """Live-now blob feeding the home Pulse card and the topbar chip.
+
+    Single round-trip: last-hour totals, last-24h hourly sparkline, the
+    five most recent turns, and the gap since the last turn. Cheap enough
+    to poll every 30 s.
+    """
+    c = connect()
+    now_row = c.execute("SELECT datetime('now') AS now").fetchone()
+    server_now = now_row["now"]
+
+    last = c.execute(
+        "SELECT MAX(started_at) AS last_at FROM turns"
+    ).fetchone()
+    last_at = last["last_at"]
+    minutes_since = None
+    if last_at:
+        delta = c.execute(
+            "SELECT (julianday('now') - julianday(?)) * 1440.0 AS m",
+            (last_at,),
+        ).fetchone()
+        minutes_since = float(delta["m"] or 0.0)
+
+    hr = c.execute(
+        """
+        SELECT COUNT(*) AS turns,
+               SUM(COALESCE(input_tokens,0)+COALESCE(output_tokens,0)) AS tokens
+        FROM turns
+        WHERE started_at >= datetime('now', '-60 minutes')
+        """
+    ).fetchone()
+    hr_errors = c.execute(
+        """
+        SELECT COUNT(DISTINCT tc.turn_id) AS n
+        FROM tool_calls tc
+        JOIN turns t ON t.id = tc.turn_id
+        WHERE tc.is_error = 1
+          AND t.started_at >= datetime('now', '-60 minutes')
+        """
+    ).fetchone()
+    hr_top_model = c.execute(
+        """
+        SELECT model, COUNT(*) AS n FROM turns
+        WHERE started_at >= datetime('now', '-60 minutes')
+          AND model IS NOT NULL
+        GROUP BY model ORDER BY n DESC LIMIT 1
+        """
+    ).fetchone()
+    hr_top_cwd = c.execute(
+        """
+        SELECT cwd, COUNT(*) AS n FROM turns
+        WHERE started_at >= datetime('now', '-60 minutes')
+          AND cwd IS NOT NULL AND cwd != ''
+        GROUP BY cwd ORDER BY n DESC LIMIT 1
+        """
+    ).fetchone()
+
+    d24 = c.execute(
+        """
+        SELECT COUNT(*) AS turns,
+               SUM(COALESCE(input_tokens,0)+COALESCE(output_tokens,0)) AS tokens
+        FROM turns
+        WHERE started_at >= datetime('now', '-24 hours')
+        """
+    ).fetchone()
+    d24_errors = c.execute(
+        """
+        SELECT COUNT(DISTINCT tc.turn_id) AS n
+        FROM tool_calls tc
+        JOIN turns t ON t.id = tc.turn_id
+        WHERE tc.is_error = 1
+          AND t.started_at >= datetime('now', '-24 hours')
+        """
+    ).fetchone()
+    # 24 hourly buckets keyed by offset (0 = 23h ago … 23 = current hour)
+    bucket_rows = c.execute(
+        """
+        SELECT CAST((julianday('now') - julianday(started_at)) * 24 AS INTEGER) AS hours_ago,
+               COUNT(*) AS n
+        FROM turns
+        WHERE started_at >= datetime('now', '-24 hours')
+        GROUP BY hours_ago
+        """
+    ).fetchall()
+    sparkline = [0] * 24
+    for row in bucket_rows:
+        ha = int(row["hours_ago"] or 0)
+        if 0 <= ha < 24:
+            sparkline[23 - ha] = int(row["n"])
+
+    recent_rows = c.execute(
+        """
+        SELECT id, session_id, started_at, model, user_text
+        FROM turns
+        ORDER BY started_at DESC LIMIT 5
+        """
+    ).fetchall()
+    recent_turns = []
+    for r in recent_rows:
+        snippet = (r["user_text"] or "").strip().replace("\n", " ")
+        if len(snippet) > 80:
+            snippet = snippet[:79] + "…"
+        recent_turns.append({
+            "id": r["id"],
+            "session_id": r["session_id"],
+            "started_at": r["started_at"],
+            "model": r["model"],
+            "snippet": snippet,
+        })
+
+    top_cwd = hr_top_cwd["cwd"] if hr_top_cwd else None
+    top_cwd_basename = top_cwd.rstrip("/").split("/")[-1] if top_cwd else None
+
+    return JSONResponse({
+        "server_now": server_now,
+        "last_turn_at": last_at,
+        "minutes_since_last_turn": minutes_since,
+        "is_live": (minutes_since is not None and minutes_since < 5),
+        "window_minutes": 60,
+        "last_hour": {
+            "turns": int(hr["turns"] or 0),
+            "tokens": int(hr["tokens"] or 0),
+            "errors": int(hr_errors["n"] or 0),
+            "top_model": hr_top_model["model"] if hr_top_model else None,
+            "top_cwd": top_cwd,
+            "top_cwd_basename": top_cwd_basename,
+        },
+        "last_24h": {
+            "turns": int(d24["turns"] or 0),
+            "tokens": int(d24["tokens"] or 0),
+            "errors": int(d24_errors["n"] or 0),
+            "sparkline": sparkline,
+        },
+        "recent_turns": recent_turns,
     })
 
 

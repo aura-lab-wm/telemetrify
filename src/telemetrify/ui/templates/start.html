@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}start · telemetrify{% endblock %}
+{% block content %}
+<section class="start-page">
+
+  <header class="start-hero">
+    <span class="start-eyebrow"># 00 · start here</span>
+    <h1 class="start-title">What is <em>telemetrify</em>?</h1>
+    <p class="start-lede">
+      A local-first record of every Claude Code turn you've ever taken — prompts, responses,
+      tool calls, tokens, errors, and the raw transcript — plus the tools to search, group,
+      replay, and grade them. Nothing leaves this machine.
+    </p>
+  </header>
+
+  {% if turns_total == 0 %}
+  <section class="start-card start-firstrun">
+    <h3>No turns captured yet</h3>
+    <p>
+      Wire the Stop hook into <code>~/.claude/settings.json</code> so every assistant turn
+      lands in this DB:
+    </p>
+<pre><code>"hooks": {
+  "Stop": [
+    {
+      "hooks": [
+        { "type": "command",
+          "command": "/Users/amastro/Projects/telemetrify/bin/capture-hook" }
+      ]
+    }
+  ]
+}</code></pre>
+    <p>
+      Then open Claude Code in any project. Refresh this page — your first turn should
+      show up within a few seconds.
+    </p>
+  </section>
+  {% else %}
+  <section class="start-tour">
+    <h3>30-second tour <span class="start-tour-sub">— try these now, in order</span></h3>
+    <ol>
+      <li>
+        <a href="/?since={{ today }}">See today's work</a>
+        <span class="start-tour-why">— every turn captured since midnight, newest first.</span>
+      </li>
+      <li>
+        <a href="/clusters">Find your most-asked prompts</a>
+        <span class="start-tour-why">— HDBSCAN groups semantically-similar prompts. The biggest clusters are usually "things you keep asking Claude".</span>
+      </li>
+      <li>
+        <a href="/ask">Ask the corpus a question</a>
+        <span class="start-tour-why">— natural-language search across all {{ '{:,}'.format(turns_total) }} turns; answers cite specific turn IDs.</span>
+      </li>
+      <li>
+        <a href="/?has_error=1">Show only turns with tool errors</a>
+        <span class="start-tour-why">— filter chip; combine with model/cwd to localize a regression.</span>
+      </li>
+      <li>
+        <a href="/queue">Surface a high-value rerun candidate</a>
+        <span class="start-tour-why">— prompts ranked by cluster size × correction signal × staleness. Pick one, replay against current Claude, diff the result.</span>
+      </li>
+    </ol>
+  </section>
+  {% endif %}
+
+  <h3 class="start-section-h">The sections</h3>
+  <div class="start-grid">
+    <a class="start-card" href="/">
+      <header><svg class="icon" aria-hidden="true"><use href="#i-turns"/></svg><strong>Turns</strong></header>
+      <p>Your raw timeline. Filter by model, project (cwd), date, errors, follow-ups, latency, tokens. <strong>Click any card</strong> to open the full transcript.</p>
+    </a>
+    <a class="start-card" href="/clusters">
+      <header><svg class="icon" aria-hidden="true"><use href="#i-clusters"/></svg><strong>Clusters</strong></header>
+      <p>Prompts grouped by semantic similarity. Surfaces patterns: "I'm always asking Claude to do this." Big clusters → candidates for a Skill or a doc.</p>
+    </a>
+    <a class="start-card" href="/queue">
+      <header><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg><strong>Queue</strong></header>
+      <p>Smart rerun candidates: which past prompts would benefit most from being replayed against the current <code>claude</code> CLI? Replay and diff the new result against the original.</p>
+    </a>
+    <a class="start-card" href="/ask">
+      <header><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><strong>Ask</strong></header>
+      <p>Natural-language Q&amp;A over the corpus. "When did I last debug a sqlite-vec issue?" Answers stream in with inline citations.</p>
+    </a>
+    <a class="start-card" href="/dashboard">
+      <header><svg class="icon" aria-hidden="true"><use href="#i-dashboard"/></svg><strong>Dashboard</strong></header>
+      <p>10 charts of historical telemetry: turns/day, tokens by model, tool-call heatmap, error rate, p50/p95 latency, cache efficiency, correction rate, top clusters.</p>
+    </a>
+    <a class="start-card" href="/api/health">
+      <header><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg><strong>Health JSON</strong></header>
+      <p>Capture lag, schema version, vector / FTS / cluster coverage, recent capture errors. Use it as a Doctor signal or to wire alerts.</p>
+    </a>
+  </div>
+
+  <h3 class="start-section-h">Search &amp; filter syntax</h3>
+  <p class="start-syntax-lede">
+    Every filter is a URL query param on <code>/</code>. Combine them freely. Bookmark
+    or paste a URL with the chips already applied — that's the entire DSL.
+  </p>
+  <table class="start-syntax">
+    <thead>
+      <tr><th>Param</th><th>What it does</th><th>Example</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>q</code></td><td>Hybrid semantic + BM25 search</td><td><a href="/?q=sqlite%20migration">/?q=sqlite migration</a></td></tr>
+      <tr><td><code>since</code> / <code>until</code></td><td>Date range (ISO YYYY-MM-DD)</td><td><a href="/?since={{ today }}">/?since={{ today }}</a></td></tr>
+      <tr><td><code>model</code></td><td>Exact model match</td><td><a href="/?model=claude-opus-4-7">/?model=claude-opus-4-7</a></td></tr>
+      <tr><td><code>cwd_glob</code></td><td>LIKE pattern on cwd (<code>*</code> wildcards)</td><td><a href="/?cwd_glob=*/telemetrify*">/?cwd_glob=*/telemetrify*</a></td></tr>
+      <tr><td><code>has_error=1</code></td><td>Only turns whose tool calls errored</td><td><a href="/?has_error=1">/?has_error=1</a></td></tr>
+      <tr><td><code>has_followup=1</code></td><td>Only turns that triggered a follow-up / retry</td><td><a href="/?has_followup=1">/?has_followup=1</a></td></tr>
+      <tr><td><code>has_annotation=1</code></td><td>Only turns you've manually annotated</td><td><a href="/?has_annotation=1">/?has_annotation=1</a></td></tr>
+      <tr><td><code>min_latency_ms</code></td><td>Only slow turns</td><td><a href="/?min_latency_ms=10000">/?min_latency_ms=10000</a></td></tr>
+      <tr><td><code>min_tokens</code></td><td>Only big turns</td><td><a href="/?min_tokens=50000">/?min_tokens=50000</a></td></tr>
+      <tr><td><code>origin=rerun</code></td><td>Only replayed turns</td><td><a href="/?origin=rerun">/?origin=rerun</a></td></tr>
+    </tbody>
+  </table>
+
+  <p class="start-foot">
+    Lost? The <strong>topbar Pulse chip</strong> tells you whether capture is live and how long since the last turn.
+    The <a href="/">home page</a> shows a live Pulse card above the recent-turns list.
+  </p>
+
+</section>
+{% endblock %}

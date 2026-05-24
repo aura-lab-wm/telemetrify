@@ -37,20 +37,9 @@ function formatLongDate(iso) {
 }
 
 // "3 minutes ago" / "2 hours ago" / "yesterday" / "{N} days ago"
+// Delegates to window.TM.formatTimeAgo (loaded from utils.js in base.html).
 function formatTimeAgo(iso) {
-  if (!iso) return null;
-  const normalised = iso.includes("T") ? iso : iso.replace(" ", "T") + "Z";
-  const then = new Date(normalised);
-  if (Number.isNaN(then.getTime())) return null;
-  const diffMs = Date.now() - then.getTime();
-  const minutes = Math.max(0, Math.round(diffMs / 60000));
-  if (minutes < 1)  return "just now";
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24)   return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days  = Math.round(hours / 24);
-  if (days === 1)   return "yesterday";
-  return `${days} days ago`;
+  return (window.TM && window.TM.formatTimeAgo) ? window.TM.formatTimeAgo(iso) : null;
 }
 
 // Compact number formatting: 7300 → "7,300", 1_200_000 → "1.2M".

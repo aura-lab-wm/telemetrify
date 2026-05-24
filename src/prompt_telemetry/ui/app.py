@@ -13,6 +13,7 @@ from ..doctor import run_health_checks
 from ..charts import CHARTS
 from ..export import export_jsonl, export_csv
 from ..rerun import run_rerun, render_inline_diff
+from ..dash0.receiver import router as dash0_router
 
 HERE = Path(__file__).resolve().parent
 STATIC_DIR = HERE / "static"
@@ -24,6 +25,7 @@ _env = Environment(
 
 app = FastAPI(title="Prompt Telemetry")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.include_router(dash0_router)
 
 _md = MarkdownIt("commonmark", {"breaks": True, "linkify": True})
 

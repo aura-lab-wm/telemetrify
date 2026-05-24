@@ -81,6 +81,23 @@ async def post_metrics(request: Request) -> Response:
     )
 
 
+@router.get("/dash0/health")
+def dash0_health() -> dict[str, Any]:
+    conn = connect()
+    row = conn.execute(
+        """
+        SELECT
+          (SELECT COUNT(*) FROM dash0_spans)               AS spans_total,
+          (SELECT COUNT(*) FROM dash0_log_records)         AS logs_total,
+          (SELECT COUNT(*) FROM dash0_span_events)         AS span_events_total,
+          (SELECT COUNT(*) FROM dash0_resources)           AS resources_total,
+          (SELECT MAX(received_at) FROM dash0_spans)       AS last_span_received_at,
+          (SELECT MAX(received_at) FROM dash0_log_records) AS last_log_received_at
+        """
+    ).fetchone()
+    return {"ok": True, **dict(row)}
+
+
 def _insert_traces_safe(payload: dict[str, Any], raw_body: bytes) -> None:
     try:
         conn = connect()

@@ -16,7 +16,9 @@ import sqlite_vec
 
 
 def _open_blank(path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(path), timeout=30.0)
+    # check_same_thread=False so e2e tests can share a fixture-owned connection
+    # across the main thread and FastAPI's BackgroundTasks worker.
+    conn = sqlite3.connect(str(path), timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

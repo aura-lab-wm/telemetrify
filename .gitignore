@@ -8,6 +8,7 @@ data/*.log
 data/*.log.*
 data/.migrations.lock
 data/.lock
+data/*.html
 
 # Python
 .venv/

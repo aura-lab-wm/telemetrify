@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "host": "rocco.cs.wm.edu",
+  "ts": 1737759600,
+  "agent_uptime_s": 12345,
+  "gpus": [
+    {
+      "idx": 0,
+      "name": "NVIDIA A100 80GB PCIe",
+      "util_pct": 42,
+      "mem_used_mib": 36210,
+      "mem_total_mib": 81920,
+      "temp_c": 63,
+      "power_w": 210
+    },
+    {
+      "idx": 1,
+      "name": "NVIDIA A100 80GB PCIe",
+      "util_pct": 8,
+      "mem_used_mib": 1024,
+      "mem_total_mib": 81920,
+      "temp_c": 41,
+      "power_w": 75
+    }
+  ],
+  "vllm": {
+    "running": true,
+    "model": "moonshotai/Kimi-Dev-72B",
+    "port": 8000,
+    "pid": 1234,
+    "uptime_s": 7200
+  },
+  "services": [
+    {"port": 8000, "proc": "vllm", "pid": 1234},
+    {"port": 22, "proc": "sshd", "pid": 1}
+  ],
+  "tier": 4,
+  "tier_reason": "4 GPUs free",
+  "inference_recent": {
+    "requests_last_5m": 17,
+    "avg_latency_ms": 842.3
+  },
+  "errors": []
+}

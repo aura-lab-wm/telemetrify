@@ -1,0 +1,4 @@
+LISTEN 0      4096       0.0.0.0:8000        0.0.0.0:*    users:(("vllm",pid=1234,fd=7))
+LISTEN 0      128        0.0.0.0:22          0.0.0.0:*    users:(("sshd",pid=987,fd=3))
+LISTEN 0      4096          [::]:8000           [::]:*    users:(("vllm",pid=1234,fd=8))
+LISTEN 0      128           [::]:22             [::]:*    users:(("sshd",pid=987,fd=4))

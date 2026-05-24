@@ -1,0 +1,17 @@
+[Unit]
+Description=Rocco status agent (writes ~/.cache/rocco-status.json for rocco-pulse)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env python3 %h/.local/bin/rocco-agent.py
+Restart=always
+RestartSec=5
+# Keep stdout/stderr in the user journal (journalctl --user -u rocco-agent).
+StandardOutput=journal
+StandardError=journal
+# No special privileges needed.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

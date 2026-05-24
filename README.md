@@ -170,6 +170,36 @@ GROUP BY pc.id ORDER BY followups DESC LIMIT 20;
 
 ---
 
+## LLM backends (Rocco vLLM → Ollama Cloud → Anthropic)
+
+Every AI feature (`/ask`, grader, digest, queue rationale, cluster labels, rerun-judge, annotate, diet) now flows through `BackendRouter` in `src/telemetrify/ai/router.py`. The router tries backends in order; transport errors fall through, deterministic errors (4xx, budget cap, schema-parse) do not. Each attempted backend writes one row to `ai_runs` with a new `backend` column (`rocco` | `ollama` | `anthropic`).
+
+```
+TELEMETRIFY_LLM_ORDER=rocco,ollama,anthropic          # default; first available wins
+TELEMETRIFY_LLM_ORDER__grader=anthropic               # per-feature pin (double underscore)
+ROCCO_BASE_URL=http://localhost:18000/v1              # SSH-tunnel default
+ROCCO_MODEL=moonshotai/Kimi-Dev-72B
+ROCCO_API_KEY=EMPTY                                   # vLLM accepts any
+OLLAMA_CLOUD_BASE_URL=https://ollama.com/v1
+OLLAMA_CLOUD_API_KEY=...                              # absent → backend reports unavailable
+OLLAMA_CLOUD_MODEL=gpt-oss:120b
+ANTHROPIC_AUTH_TOKEN=...                              # unchanged safety net
+```
+
+The daily $ cap (`AI_BUDGET_USD_PER_DAY`) counts only Anthropic spend. Local-tier runs record a synthetic micro-cost so the dashboard's cost chart still distinguishes "Rocco ran" from "no AI ran" but rolls up to ~$0.00001/day.
+
+**Rocco access** is over SSH (`rocco.cs.wm.edu:13110`). Keep a long-running ControlMaster tunnel up:
+```sh
+# in ~/.ssh/config under: Host rocco
+#   ControlMaster auto / ControlPath ~/.ssh/cm-%r@%h:%p / ControlPersist 10m
+
+ssh -L 18000:localhost:8000 -fN rocco                 # one-time, lives 10 min after disconnect
+```
+
+The companion **rocco-pulse** menu-bar app (`menubar/`) shows GPU util / vLLM status / tier badge so you can see at a glance which backend `/ask` will hit. Build + install: `make -C menubar install`. The Rocco-side polling daemon ships in `menubar/rocco-agent/` — one-time install via `bash menubar/rocco-agent/install.sh rocco`.
+
+---
+
 ## Limitations
 
 - **Local-only capture**: the Stop hook reads `~/.claude/projects/` on the local Mac. The deployed/synced viewer cannot capture — it can only display rows pushed via `bin/sync`.

@@ -47,3 +47,10 @@ data/vapid_public.pem
 
 # Editor / sed backups
 *.bak
+
+# macOS menubar app (Swift) — generated artifacts
+menubar/build/
+menubar/rocco-pulse.xcodeproj/
+menubar/**/*.xcuserstate
+menubar/**/xcuserdata/
+menubar/**/.swiftpm/

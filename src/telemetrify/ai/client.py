@@ -81,12 +81,16 @@ class AnthropicClient:
 
     # ── budget --------------------------------------------------------------
     def _today_spend_usd(self) -> float:
+        # Only Anthropic rows count toward the daily $ cap — local tiers
+        # (rocco / ollama) ran at ~$0 so charging them against the cap would
+        # defeat the whole point of the fall-through chain.
         row = self.conn.execute(
             """
             SELECT COALESCE(SUM(cost_usd), 0) AS s
             FROM ai_runs
             WHERE date(started_at) = date('now')
               AND COALESCE(override_budget, 0) = 0
+              AND backend = 'anthropic'
             """
         ).fetchone()
         return float(row["s"] if row else 0.0)
@@ -242,100 +246,26 @@ class AnthropicClient:
         feature: str,
         template: P.PromptTemplate,
         user_kwargs: dict,
-        schema: dict,
+        schema: dict | None,
         target_id: str | int | None = None,
         max_tokens: int = 1024,
         timeout: float = 30.0,
         model_override: str | None = None,
-    ) -> AICallResult:
-        system, user = template.render(**user_kwargs)
-        model = model_override or template.model
-
-        # Cheap input-token estimate: 4 chars/token rule of thumb.
-        est_in = (len(system) + len(user)) // 4
-        est_out = max_tokens // 2
-        est_cost = estimate_cost_usd(model, est_in, est_out)
-
-        # 1. record pending row first; budget check uses today's sum.
-        self._check_budget(est_cost)
-        started = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        cur = self.conn.execute(
-            """
-            INSERT INTO ai_runs(feature, model, prompt_version, target_id,
-                                input_tokens, output_tokens, cost_usd, status,
-                                started_at, override_budget)
-            VALUES (?, ?, ?, ?, 0, 0, 0, 'pending', ?, ?)
-            """,
-            (feature, model, template.version, str(target_id) if target_id is not None else None,
-             started, 1 if self.override_budget_usd is not None else 0),
-        )
-        self.conn.commit()
-        ai_run_id = cur.lastrowid
-
-        # 2. call the SDK with retry on transient errors.
-        t0 = time.monotonic()
-        last_err: Exception | None = None
-        response = None
-        for attempt in range(2):
-            try:
-                response = self._client().messages.create(
-                    model=model,
-                    max_tokens=max_tokens,
-                    system=system,
-                    messages=[{"role": "user", "content": user}],
-                    timeout=timeout,
-                )
-                break
-            except Exception as e:
-                last_err = e
-                if attempt == 0:
-                    time.sleep(1.0)
-                else:
-                    self._finish(ai_run_id, started, t0, 0, 0, 0.0, "failure", str(e))
-                    raise
-        assert response is not None  # for type-checker
-
-        duration_ms = int((time.monotonic() - t0) * 1000)
-
-        # Extract text + usage.
-        raw_text = ""
-        for block in (response.content or []):
-            if getattr(block, "type", None) == "text":
-                raw_text += getattr(block, "text", "")
-        usage = getattr(response, "usage", None)
-        in_tok = int(getattr(usage, "input_tokens", 0) or 0) if usage else 0
-        out_tok = int(getattr(usage, "output_tokens", 0) or 0) if usage else 0
-        cost = estimate_cost_usd(model, in_tok, out_tok)
-
-        # 3. parse + validate JSON; on validation failure, retry once with a clarifying suffix.
-        try:
-            parsed = self._extract_json(raw_text)
-        except Exception as e:
-            self._finish(ai_run_id, started, t0, in_tok, out_tok, cost, "failure",
-                          f"bad JSON: {e}")
-            raise RuntimeError(f"AI response not JSON: {e}\n---\n{raw_text[:500]}")
-
-        errs = self.validate_schema(parsed, schema)
-        if errs:
-            self._finish(ai_run_id, started, t0, in_tok, out_tok, cost, "failure",
-                          "schema: " + "; ".join(errs[:3]))
-            raise RuntimeError(
-                f"AI response failed schema validation: {errs[:3]}\n---\n{raw_text[:500]}"
-            )
-
-        # 4. mark success.
-        self._finish(ai_run_id, started, t0, in_tok, out_tok, cost, "success", None)
-
-        return AICallResult(
-            parsed=parsed,
-            raw_text=raw_text,
-            input_tokens=in_tok,
-            output_tokens=out_tok,
-            cost_usd=cost,
-            duration_ms=duration_ms,
-            model=model,
-            prompt_version=template.version,
-            ai_run_id=ai_run_id,
+    ) -> "AICallResult":
+        """Thin compatibility shim — delegates to BackendRouter so all nine
+        feature modules keep working unchanged while gaining the 3-tier
+        fall-through (Rocco vLLM → Ollama Cloud → Anthropic Sonnet)."""
+        from .router import default_router
+        router = default_router(self.conn, override_budget_usd=self.override_budget_usd)
+        return router.call(
+            feature=feature,
+            template=template,
+            user_kwargs=user_kwargs,
+            schema=schema,
+            target_id=target_id,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            model_override=model_override,
         )
 
     def _finish(self, ai_run_id: int, started: str, t0: float,

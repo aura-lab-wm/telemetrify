@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "host": "rocco.cs.wm.edu",
+  "ts": 1737759600,
+  "agent_uptime_s": 5,
+  "gpus": [],
+  "vllm": {
+    "running": false,
+    "model": null,
+    "port": 8000,
+    "pid": null,
+    "uptime_s": 0
+  },
+  "services": [
+    {"port": 22, "proc": "sshd", "pid": 1}
+  ],
+  "tier": 1,
+  "tier_reason": "no GPUs visible",
+  "inference_recent": null,
+  "errors": ["nvidia-smi: no devices found"]
+}

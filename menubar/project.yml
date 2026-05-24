@@ -1,0 +1,81 @@
+name: rocco-pulse
+options:
+  bundleIdPrefix: dev.mastropaolo
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGNING_ALLOWED: NO
+targets:
+  RoccoPulseCore:
+    type: framework
+    platform: macOS
+    sources:
+      - RoccoPulseCore/Sources
+    info:
+      path: RoccoPulseCore/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.rocco-pulse.core
+        DEFINES_MODULE: YES
+
+  RoccoPulseApp:
+    type: application
+    platform: macOS
+    sources:
+      - RoccoPulseApp/Sources
+    info:
+      path: RoccoPulseApp/Info.plist
+      properties:
+        LSUIElement: true
+        LSMinimumSystemVersion: "14.0"
+        CFBundleName: "Rocco Pulse"
+        CFBundleDisplayName: "Rocco Pulse"
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        NSHumanReadableCopyright: "© 2026 Antonio Mastropaolo"
+    dependencies:
+      - target: RoccoPulseCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.rocco-pulse
+        PRODUCT_NAME: rocco-pulse
+        INFOPLIST_FILE: RoccoPulseApp/Info.plist
+
+  RoccoPulseCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: RoccoPulseCoreTests
+        excludes:
+          - "Fixtures/**"
+      - path: RoccoPulseCoreTests/Fixtures
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: RoccoPulseCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.rocco-pulse.core.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  RoccoPulseCore:
+    build:
+      targets:
+        RoccoPulseCore: all
+        RoccoPulseCoreTests: [test]
+    test:
+      targets:
+        - RoccoPulseCoreTests
+  RoccoPulseApp:
+    build:
+      targets:
+        RoccoPulseApp: all
+    run:
+      config: Debug

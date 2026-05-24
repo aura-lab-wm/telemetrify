@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent: daily digest at 22:00 local time. Calls bin/digest --notify
+  which generates a sonnet-based summary of the day's turns and (if a push
+  subscription exists) fires a desktop notification linking to /dashboard.
+
+  Install: bin/service install-digest (or copy this plist into
+  ~/Library/LaunchAgents and launchctl load -w it).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.amastropaolo.telemetrify-digest</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/amastro/Projects/telemetrify/bin/digest</string>
+    <string>--notify</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/amastro/Projects/telemetrify</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>22</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/amastro/Projects/telemetrify/data/digest-stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/amastro/Projects/telemetrify/data/digest-stderr.log</string>
+</dict>
+</plist>

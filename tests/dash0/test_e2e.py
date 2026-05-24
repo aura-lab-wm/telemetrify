@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def app_on_migrated_db(monkeypatch, migrated_db: sqlite3.Connection):
     """Build a FastAPI app whose connect() returns the migrated_db fixture."""
-    import prompt_telemetry.dash0.receiver as receiver_mod
+    import telemetrify.dash0.receiver as receiver_mod
 
     monkeypatch.setattr(receiver_mod, "connect", lambda: migrated_db)
 

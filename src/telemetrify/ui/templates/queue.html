@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}queue · telemetrify{% endblock %}
+{% block body_class %}v-page{% endblock %}
+{% block content %}
+<div class="v-shell">
+
+  <header class="queue-hero">
+    <div class="ask-hero-meta">
+      <span class="meta-line">§ 03 · Smart Rerun Queue</span>
+      <span class="pill pill-orange">{{ candidates|length }} candidates</span>
+    </div>
+    <h1 class="ask-title">Worth <span class="ask-title-accent">re-asking</span>.</h1>
+    <p class="ask-tagline">Ranked by cluster size, age, auto-grade, and correction signal. Reruns within the last 30 days are filtered out.</p>
+
+    <div class="queue-formula">
+      <div class="queue-formula-row">
+        <span class="meta-line">score</span>
+        <span class="queue-formula-eq">
+          <span class="qf-weight">0.40</span><span class="qf-token">·</span><span class="qf-var">cluster_norm</span>
+          <span class="qf-op">+</span>
+          <span class="qf-weight">0.30</span><span class="qf-token">·</span><span class="qf-var">age_norm</span>
+          <span class="qf-op">+</span>
+          <span class="qf-weight">0.20</span><span class="qf-token">·</span><span class="qf-var">(1 − quality/5)</span>
+          <span class="qf-op">+</span>
+          <span class="qf-weight">0.10</span><span class="qf-token">·</span><span class="qf-var">has_followup</span>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <form id="queue-form" class="queue-frame" method="post" action="/api/queue/rerun-all">
+
+    <!-- Sticky action bar -->
+    <div class="queue-action-bar">
+      <div class="queue-action-stats">
+        <span class="meta-line">selected</span>
+        <span class="queue-action-count" id="queue-count">0</span>
+        <span class="queue-action-divider"></span>
+        <span class="meta-line">est budget</span>
+        <span class="queue-action-cost" id="queue-cost">$0.00</span>
+        <span class="queue-budget-meter">
+          <span class="queue-budget-meter-fill" id="queue-budget-fill" style="width:0%"></span>
+        </span>
+        <span class="meta-line">/ $10.00 cap</span>
+      </div>
+      <div class="queue-action-controls">
+        <button type="button" id="queue-select-all" class="queue-link-btn">select all</button>
+        <button type="button" id="queue-clear"      class="queue-link-btn">clear</button>
+        <button type="submit" class="queue-submit" id="queue-submit" disabled>
+          <span class="queue-submit-text">rerun selected</span>
+          <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Candidate list -->
+    <ol class="queue-list">
+      {% for c in candidates %}
+        {% set q = c.quality if c.quality is not none else 3 %}
+        <li class="queue-card" data-cost="{{ c.estimated_cost_usd }}" style="--ix:{{ loop.index0 }}">
+          <label class="queue-card-row">
+            <input type="checkbox" name="turn_ids" value="{{ c.turn_id }}" class="queue-checkbox">
+
+            <div class="queue-rank">
+              <span class="queue-rank-n">{{ '%02d' % loop.index }}</span>
+            </div>
+
+            <div class="queue-score-block">
+              <div class="queue-score-num">{{ '%.2f' % c.score }}</div>
+              <div class="queue-score-bars" title="score components">
+                <span class="qsb qsb-cluster" style="--w:{{ c.components.cluster_norm }}" data-label="cluster"></span>
+                <span class="qsb qsb-age"     style="--w:{{ c.components.age_norm }}"     data-label="age"></span>
+                <span class="qsb qsb-quality" style="--w:{{ c.components.quality_term }}"   data-label="quality"></span>
+                <span class="qsb qsb-fu"      style="--w:{{ c.components.followup_term }}"  data-label="followup"></span>
+              </div>
+            </div>
+
+            <div class="queue-body">
+              <div class="queue-body-snippet">{{ c.user_text_snippet }}</div>
+              <div class="queue-body-meta">
+                <a class="queue-meta-turn" href="/turns/{{ c.turn_id }}">turn #{{ c.turn_id }}</a>
+                {% if c.cluster_label %}<a class="queue-meta-cluster" href="/clusters/{{ c.cluster_id }}">⊕ {{ c.cluster_label[:36] }}</a>{% endif %}
+                <span class="queue-meta-sep">·</span>
+                {% if c.quality is not none %}<span class="queue-meta-quality q-{{ q }}">q={{ q }}</span>{% else %}<span class="queue-meta-quality q-na">ungraded</span>{% endif %}
+                {% if c.has_followup %}<span class="queue-meta-flag">↩ corrected</span>{% endif %}
+                <span class="queue-meta-sep">·</span>
+                <span class="queue-meta-age">{{ c.days_old|int }}d old</span>
+                <span class="queue-meta-cwd"><code>{{ c.cwd[-44:] if c.cwd else '—' }}</code></span>
+              </div>
+            </div>
+
+            <div class="queue-right">
+              <span class="queue-est">${{ '%.2f' % c.estimated_cost_usd }}</span>
+              <span class="meta-line">est</span>
+            </div>
+          </label>
+        </li>
+      {% else %}
+        <li class="queue-empty">
+          <div class="meta-line">no candidates</div>
+          <p>Your corpus is fresh or fully replayed. Run new prompts; check back later.</p>
+        </li>
+      {% endfor %}
+    </ol>
+  </form>
+</div>
+
+<script src="/static/queue.js"></script>
+{% endblock %}

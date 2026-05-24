@@ -1,4 +1,4 @@
-# dash0-agent-plugin → prompt-telemetry local OTLP sink
+# dash0-agent-plugin → telemetrify local OTLP sink
 
 Wire the dash0 plugin to ship every Claude Code event (~24 hook types, not
 just `Stop`) into this project's SQLite DB. No Dash0 cloud account needed.
@@ -27,7 +27,7 @@ session UUID).
 ### 1. Make sure the UI server is running
 
 ```bash
-cd ~/Projects/prompt-telemetry
+cd ~/Projects/telemetrify
 bin/telemetry-ui          # http://127.0.0.1:8767
 ```
 
@@ -194,9 +194,9 @@ the plugin entirely:
 
 ## Where the code lives
 
-- Receiver:     `src/prompt_telemetry/dash0/receiver.py`
-- Store:        `src/prompt_telemetry/dash0/store.py`
-- Schema:       `src/prompt_telemetry/migrations/016_dash0_otel.sql`
+- Receiver:     `src/telemetrify/dash0/receiver.py`
+- Store:        `src/telemetrify/dash0/store.py`
+- Schema:       `src/telemetrify/migrations/016_dash0_otel.sql`
 - Tests:        `tests/dash0/`
 - This doc:     `deploy/dash0-integration.md`
 - Comparison vs vanilla dash0: `deploy/comparison-with-dash0.md`

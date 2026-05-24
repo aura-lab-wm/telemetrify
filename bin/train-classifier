@@ -2,4 +2,4 @@
 # Train the local grader classifier from auto_grades + annotations.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/.venv/bin/python" -m prompt_telemetry.ai.classifier train "$@"
+exec "$ROOT/.venv/bin/python" -m telemetrify.ai.classifier train "$@"

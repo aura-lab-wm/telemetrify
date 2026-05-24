@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>telemetrify mark (monochrome / template)</title>
+  <rect x="8" y="14" width="48" height="3.5" rx="1.5" fill="currentColor"/>
+  <path d="M30.5 17.5 V32 L26 38 L32 50 L36 32 L41 36 H56"
+        stroke="currentColor" stroke-width="3.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="56" cy="36" r="2.8" fill="currentColor"/>
+</svg>

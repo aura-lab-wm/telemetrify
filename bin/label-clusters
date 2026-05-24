@@ -2,4 +2,4 @@
 # Auto-label prompt clusters via LLM.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/.venv/bin/python" -m prompt_telemetry.ai.cluster_label "$@"
+exec "$ROOT/.venv/bin/python" -m telemetrify.ai.cluster_label "$@"

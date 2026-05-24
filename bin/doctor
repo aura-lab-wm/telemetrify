@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Health-check the prompt-telemetry pipeline.
+# Health-check the telemetrify pipeline.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/.venv/bin/python" -m prompt_telemetry.doctor "$@"
+exec "$ROOT/.venv/bin/python" -m telemetrify.doctor "$@"

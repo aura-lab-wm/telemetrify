@@ -39,8 +39,8 @@ def blank_db(tmp_path: Path) -> Iterator[sqlite3.Connection]:
 
 @pytest.fixture
 def migrated_db(tmp_path: Path, monkeypatch) -> Iterator[sqlite3.Connection]:
-    import prompt_telemetry as pkg
-    import prompt_telemetry.migrations._runner as runner
+    import telemetrify as pkg
+    import telemetrify.migrations._runner as runner
 
     tmp_data = tmp_path / "data"
     tmp_data.mkdir()

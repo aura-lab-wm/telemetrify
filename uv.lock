@@ -1427,54 +1427,6 @@ wheels = [
 ]
 
 [[package]]
-name = "prompt-telemetry"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "anthropic" },
-    { name = "cryptography" },
-    { name = "fastapi" },
-    { name = "hdbscan" },
-    { name = "jinja2" },
-    { name = "markdown-it-py" },
-    { name = "py-vapid" },
-    { name = "python-multipart" },
-    { name = "pywebpush" },
-    { name = "scikit-learn" },
-    { name = "sentence-transformers" },
-    { name = "sqlite-vec" },
-    { name = "uvicorn", extra = ["standard"] },
-    { name = "zstandard" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anthropic", specifier = ">=0.30" },
-    { name = "cryptography", specifier = ">=42.0" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "hdbscan", specifier = ">=0.8.40" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
-    { name = "jinja2", specifier = ">=3.1" },
-    { name = "markdown-it-py", specifier = ">=3.0" },
-    { name = "py-vapid", specifier = ">=1.9" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "python-multipart", specifier = ">=0.0.9" },
-    { name = "pywebpush", specifier = ">=2.0" },
-    { name = "scikit-learn", specifier = ">=1.4" },
-    { name = "sentence-transformers", specifier = ">=3.0" },
-    { name = "sqlite-vec", specifier = ">=0.1.6" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
-    { name = "zstandard", specifier = ">=0.22" },
-]
-provides-extras = ["dev"]
-
-[[package]]
 name = "propcache"
 version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2194,6 +2146,54 @@ sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5", size = 6299353, upload-time = "2025-04-27T18:04:59.103Z" },
 ]
+
+[[package]]
+name = "telemetrify"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "anthropic" },
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "hdbscan" },
+    { name = "jinja2" },
+    { name = "markdown-it-py" },
+    { name = "py-vapid" },
+    { name = "python-multipart" },
+    { name = "pywebpush" },
+    { name = "scikit-learn" },
+    { name = "sentence-transformers" },
+    { name = "sqlite-vec" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "zstandard" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.30" },
+    { name = "cryptography", specifier = ">=42.0" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "hdbscan", specifier = ">=0.8.40" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "jinja2", specifier = ">=3.1" },
+    { name = "markdown-it-py", specifier = ">=3.0" },
+    { name = "py-vapid", specifier = ">=1.9" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
+    { name = "python-multipart", specifier = ">=0.0.9" },
+    { name = "pywebpush", specifier = ">=2.0" },
+    { name = "scikit-learn", specifier = ">=1.4" },
+    { name = "sentence-transformers", specifier = ">=3.0" },
+    { name = "sqlite-vec", specifier = ">=0.1.6" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "zstandard", specifier = ">=0.22" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "threadpoolctl"

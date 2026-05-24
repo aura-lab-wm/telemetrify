@@ -2,4 +2,4 @@
 # Sync local SQLite telemetry to a remote Postgres (Phase 8 stub).
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/.venv/bin/python" -m prompt_telemetry.sync "$@"
+exec "$ROOT/.venv/bin/python" -m telemetrify.sync "$@"

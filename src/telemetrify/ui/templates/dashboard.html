@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}dashboard · telemetrify{% endblock %}
+{% block body_class %}v-page{% endblock %}
+{% block content %}
+<section class="ledger-page">
+
+  <!-- ── Masthead ─────────────────────────────────────────────────── -->
+  <header class="masthead">
+    <div class="masthead-rule">
+      <span class="folio">№ 01</span>
+      <span class="folio-section">dashboard</span>
+      <span class="folio-spacer"></span>
+      <span class="folio-meta" id="masthead-date">—</span>
+    </div>
+    <h1 class="masthead-title">System Telemetry</h1>
+    <p class="masthead-sub" id="masthead-narrative">
+      <span class="muted">summarising the ledger…</span>
+    </p>
+  </header>
+
+  <!-- ── Daily digest banner (Round C1) ───────────────────────────── -->
+  <aside class="digest-banner" id="digest-banner" hidden>
+    <div class="digest-header">
+      <span class="digest-tag">today's digest</span>
+      <span class="digest-date" id="digest-date">—</span>
+    </div>
+    <p class="digest-body" id="digest-body"></p>
+  </aside>
+
+  <!-- ── Narrative fold ──────────────────────────────────────────── -->
+  <section class="fold">
+    <div class="fold-row" id="fold-row">
+      <span class="muted">loading headline figures…</span>
+    </div>
+  </section>
+
+  <!-- ── Plates ─────────────────────────────────────────────────── -->
+  <section class="plate-group">
+    <h3 class="plate-group-title">
+      <span class="plate-group-id">i.</span>
+      <em>Volume</em>
+    </h3>
+    <div class="plates two-up">
+      <div class="plate"><div id="chart-turns-per-day" class="chart"></div></div>
+      <div class="plate"><div id="chart-tokens-by-model" class="chart"></div></div>
+    </div>
+  </section>
+
+  <section class="plate-group">
+    <h3 class="plate-group-title">
+      <span class="plate-group-id">ii.</span>
+      <em>Quality &amp; correction</em>
+    </h3>
+    <div class="plates wide-then-two">
+      <div class="plate wide"><div id="chart-cluster-correction-breakdown" class="chart chart-tall"></div></div>
+      <div class="plate"><div id="chart-correction-rate" class="chart"></div></div>
+      <div class="plate"><div id="chart-annotations" class="chart"></div></div>
+    </div>
+  </section>
+
+  <section class="plate-group">
+    <h3 class="plate-group-title">
+      <span class="plate-group-id">iii.</span>
+      <em>Reliability</em>
+    </h3>
+    <div class="plates wide-then-two">
+      <div class="plate wide"><div id="chart-tool-heatmap" class="chart"></div></div>
+      <div class="plate"><div id="chart-latency" class="chart"></div></div>
+      <div class="plate"><div id="chart-error-rate" class="chart"></div></div>
+    </div>
+  </section>
+
+  <section class="plate-group">
+    <h3 class="plate-group-title">
+      <span class="plate-group-id">iv.</span>
+      <em>Cost &amp; cache</em>
+    </h3>
+    <div class="plates two-up">
+      <div class="plate wide"><div id="chart-cache-efficiency" class="chart"></div></div>
+      <div class="plate"><div id="chart-top-clusters" class="chart chart-tall"></div></div>
+    </div>
+  </section>
+
+  <footer class="ledger-footer">
+    <span class="rule"></span>
+    <span class="footer-text">
+      Ledger compiled from <code class="mono" id="footer-sessions">—</code> sessions ·
+      <a href="/api/export?format=jsonl">export jsonl</a> ·
+      <a href="/api/export?format=csv">export csv</a> ·
+      <a href="/api/health">/api/health</a>
+    </span>
+    <span class="footer-spacer"></span>
+    <button id="notify-toggle" class="notify-toggle" type="button" data-state="loading"
+            aria-pressed="false" title="enable desktop notifications for daily digest">
+      <span class="notify-dot"></span>
+      <span class="notify-label">notifications</span>
+    </button>
+  </footer>
+</section>
+
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="/static/dashboard.js"></script>
+<script src="/static/push-client.js"></script>
+<script>
+  // Daily-digest banner — show today's summary if generated.
+  (async () => {
+    try {
+      const res = await fetch("/api/digest/today");
+      const j = await res.json();
+      if (!j.summary) return;
+      const banner = document.getElementById("digest-banner");
+      const date = document.getElementById("digest-date");
+      const body = document.getElementById("digest-body");
+      date.textContent = j.date;
+      body.textContent = j.summary;
+      banner.hidden = false;
+    } catch (e) { /* silent */ }
+  })();
+</script>
+<script>
+  (function () {
+    const btn = document.getElementById("notify-toggle");
+    if (!btn) return;
+    const label = btn.querySelector(".notify-label");
+    const api = window.promptTelemetryPush;
+
+    function paint(state, text) {
+      btn.dataset.state = state;
+      btn.setAttribute("aria-pressed", state === "on" ? "true" : "false");
+      label.textContent = text;
+    }
+
+    async function refresh() {
+      if (!api) return paint("unsupported", "notifications n/a");
+      const s = await api.status();
+      if (!s.supported)         return paint("unsupported", "notifications n/a");
+      if (s.permission === "denied")
+                                return paint("denied", "notifications blocked");
+      if (s.subscribed)         return paint("on", "notifications on");
+      return paint("off", "enable notifications");
+    }
+
+    btn.addEventListener("click", async () => {
+      if (!api) return;
+      const s = await api.status();
+      try {
+        if (s.subscribed) {
+          paint("loading", "unsubscribing…");
+          await api.unsubscribe();
+        } else {
+          paint("loading", "requesting…");
+          await api.subscribe();
+        }
+      } catch (e) { console.error("notify toggle:", e); }
+      refresh();
+    });
+
+    refresh();
+  })();
+</script>
+{% endblock %}

@@ -28,8 +28,8 @@ def client_and_calls(monkeypatch):
         calls["logs"].append(payload)
         return len(payload.get("resourceLogs") or [])
 
-    import prompt_telemetry.dash0.receiver as receiver_mod
-    import prompt_telemetry.dash0.store as store_mod
+    import telemetrify.dash0.receiver as receiver_mod
+    import telemetrify.dash0.store as store_mod
 
     monkeypatch.setattr(store_mod, "insert_trace_export", fake_insert_trace)
     monkeypatch.setattr(store_mod, "insert_log_export", fake_insert_log)

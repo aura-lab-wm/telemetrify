@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" fill="none">
+  <title>telemetrify · social card</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0a0a"/>
+      <stop offset="1" stop-color="#050505"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0 H0 V40" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+
+  <!-- mark -->
+  <g transform="translate(120,180) scale(4)">
+    <rect x="8" y="14" width="48" height="3.5" rx="1.5" fill="#ff5c00"/>
+    <path d="M30.5 17.5 V32 L26 38 L32 50 L36 32 L41 36 H56"
+          stroke="#ff5c00" stroke-width="3.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="56" cy="36" r="2.8" fill="#ff5c00"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="430" y="320" fill="#fafafa"
+        font-family="-apple-system,'SF Pro Display','Geist',sans-serif"
+        font-size="116" font-weight="500" letter-spacing="-0.02em" font-style="italic">telemetrify</text>
+  <!-- tagline -->
+  <text x="432" y="382" fill="#a1a1aa"
+        font-family="-apple-system,'SF Pro Text','Geist',sans-serif"
+        font-size="32" font-weight="400">per-prompt telemetry for Claude Code · local-first</text>
+
+  <!-- baseline rule + chips -->
+  <line x1="120" y1="500" x2="1080" y2="500" stroke="#ffffff" stroke-opacity="0.08"/>
+  <g font-family="'Geist Mono',ui-monospace,monospace" font-size="20" fill="#71717a">
+    <text x="120" y="546">capture</text>
+    <text x="250" y="546">·</text>
+    <text x="270" y="546">embed</text>
+    <text x="378" y="546">·</text>
+    <text x="398" y="546">cluster</text>
+    <text x="514" y="546">·</text>
+    <text x="534" y="546">replay</text>
+    <text x="646" y="546">·</text>
+    <text x="666" y="546">grade</text>
+  </g>
+  <text x="1080" y="546" text-anchor="end" fill="#ff5c00"
+        font-family="'Geist Mono',ui-monospace,monospace" font-size="20">v0.2</text>
+</svg>

@@ -2,4 +2,4 @@
 # Re-run prompt clustering over the recent window.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/.venv/bin/python" -m prompt_telemetry.cluster "$@"
+exec "$ROOT/.venv/bin/python" -m telemetrify.cluster "$@"

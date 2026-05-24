@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}telemetrify{% endblock %}</title>
+  <meta name="description" content="telemetrify · per-prompt telemetry capture, semantic search, and replay for Claude Code sessions. Local-first.">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta property="og:title" content="telemetrify">
+  <meta property="og:description" content="Per-prompt telemetry for Claude Code · local-first">
+  <meta property="og:image" content="/static/og-image.png">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="alternate icon" href="/static/favicon.ico">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="{% block body_class %}v-page{% endblock %}">
+  {% include "_icons.html" %}
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="telemetrify home">
+      <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+        <rect class="brand-bar" x="8" y="14" width="48" height="3.5" rx="1.5"/>
+        <path class="brand-trace" d="M30.5 17.5 V32 L26 38 L32 50 L36 32 L41 36 H56"
+              fill="none" stroke="currentColor" stroke-width="3.5"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <circle class="brand-dot" cx="56" cy="36" r="2.8"/>
+      </svg>
+      <span class="wordmark">telemetri<span class="wordmark-accent">fy</span></span>
+    </a>
+    <span class="topbar-rule" aria-hidden="true"></span>
+    <nav class="topnav">
+      <a href="/" {% if request and request.url.path == '/' %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-turns"/></svg>
+        <span>Turns</span>
+      </a>
+      <a href="/clusters" {% if request and '/clusters' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-clusters"/></svg>
+        <span>Clusters</span>
+      </a>
+      <a href="/ask" {% if request and '/ask' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+        <span>Ask</span>
+      </a>
+      <a href="/queue" {% if request and '/queue' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>
+        <span>Queue</span>
+      </a>
+      <a href="/dashboard" {% if request and '/dashboard' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-dashboard"/></svg>
+        <span>Dashboard</span>
+      </a>
+    </nav>
+    <form class="search" action="/" method="get" role="search">
+      <span class="search-affix"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></span>
+      <input type="search" name="q" value="{{ q|default('') }}"
+             placeholder="Search prompts…"
+             aria-label="semantic search across all prompts">
+      <span class="search-kbd" aria-hidden="true">
+        <kbd>⌘</kbd><kbd>K</kbd>
+      </span>
+      <button type="submit" class="search-submit-sr" aria-label="search">search</button>
+    </form>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    // Global ⌘K / Ctrl-K focuses the topbar search.
+    (function () {
+      var input = document.querySelector('.topbar .search input[name="q"]');
+      if (!input) return;
+      document.addEventListener('keydown', function (e) {
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+          e.preventDefault();
+          input.focus();
+          input.select();
+        }
+        if (e.key === '/' && document.activeElement !== input &&
+            !['INPUT','TEXTAREA'].includes((document.activeElement||{}).tagName)) {
+          e.preventDefault();
+          input.focus();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -3,4 +3,4 @@
 # completed turn into the local SQLite telemetry DB. Never blocks.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/.venv/bin/python" -m prompt_telemetry.capture
+exec "$ROOT/.venv/bin/python" -m telemetrify.capture

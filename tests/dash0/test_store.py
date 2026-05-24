@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from prompt_telemetry.dash0.store import (
+from telemetrify.dash0.store import (
     _attr_value,
     _fingerprint,
     _kv_array_to_dict,
@@ -18,7 +18,7 @@ from prompt_telemetry.dash0.store import (
 
 MIGRATION_016 = (
     Path(__file__).resolve().parents[2]
-    / "src" / "prompt_telemetry" / "migrations" / "016_dash0_otel.sql"
+    / "src" / "telemetrify" / "migrations" / "016_dash0_otel.sql"
 )
 
 

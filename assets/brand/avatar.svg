@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <title>telemetrify · repo avatar</title>
+  <rect width="400" height="400" rx="80" fill="#0a0a0a"/>
+  <!-- inner frame -->
+  <rect x="44" y="44" width="312" height="312" rx="56" fill="none" stroke="#ff5c00" stroke-opacity="0.18" stroke-width="2"/>
+  <!-- T crossbar -->
+  <rect x="92" y="118" width="216" height="18" rx="8" fill="#ff5c00"/>
+  <!-- signal trace -->
+  <path d="M193 138 V204 L173 232 L201 296 L222 204 L242 226 H308"
+        stroke="#ff5c00" stroke-width="18"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="308" cy="226" r="14" fill="#ff5c00"/>
+  <!-- wordmark hint -->
+  <text x="200" y="368" fill="#a1a1aa" text-anchor="middle"
+        font-family="-apple-system,'SF Mono','Geist Mono',monospace"
+        font-size="22" font-weight="500" letter-spacing="0.18em">TELEMETRIFY</text>
+</svg>

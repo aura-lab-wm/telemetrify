@@ -1,14 +1,14 @@
-# prompt-telemetry vs dash0-agent-plugin
+# telemetrify vs dash0-agent-plugin
 
 ## TL;DR
 
-- **prompt-telemetry** — your local, single-binary Python pipeline that grades, clusters, paraphrase-detects, and rerun-diffs every Claude Code turn into one SQLite-vec DB on this Mac. Built around the **research/analysis** loop.
+- **telemetrify** — your local, single-binary Python pipeline that grades, clusters, paraphrase-detects, and rerun-diffs every Claude Code turn into one SQLite-vec DB on this Mac. Built around the **research/analysis** loop.
 - **dash0-agent-plugin** — a Go binary shipping ~24 Claude Code event types as OTel-conformant GenAI traces/logs to an OTLP/HTTP endpoint (Dash0 cloud by default). Built around the **production-ops/multi-agent timeline** loop.
-- **Single most important difference:** prompt-telemetry captures _one event_ (Stop) but enriches it heavily; dash0 captures _many events_ flatly. prompt-telemetry knows things about your prompts; dash0 knows things about your sessions' shape.
+- **Single most important difference:** telemetrify captures _one event_ (Stop) but enriches it heavily; dash0 captures _many events_ flatly. telemetrify knows things about your prompts; dash0 knows things about your sessions' shape.
 
 ## Capture surface
 
-| Hook event | prompt-telemetry | dash0 |
+| Hook event | telemetrify | dash0 |
 |---|---|---|
 | SessionStart / SessionEnd | — | yes |
 | UserPromptSubmit | optional | yes |
@@ -22,11 +22,11 @@
 | Elicitation / ElicitationResult / Notification | — | yes |
 | **Distinct events** | **1–2** | **24** |
 
-prompt-telemetry sees ~5–8% of the live event surface dash0 sees. Crucially, it does reconstruct tool calls (and their I/O, errors, timing) from `~/.claude/projects/*.jsonl` inside the Stop hook, so it's not missing that data — but everything it knows arrives in one batch after each turn, never mid-flight.
+telemetrify sees ~5–8% of the live event surface dash0 sees. Crucially, it does reconstruct tool calls (and their I/O, errors, timing) from `~/.claude/projects/*.jsonl` inside the Stop hook, so it's not missing that data — but everything it knows arrives in one batch after each turn, never mid-flight.
 
 ## Data model
 
-| Dimension | prompt-telemetry | dash0 |
+| Dimension | telemetrify | dash0 |
 |---|---|---|
 | Shape | Relational: `sessions` → `turns` → `tool_calls` + `turn_vec` (vec0 384-dim) + `turns_fts` (FTS5) + `annotations` / `prompt_clusters` / `turn_followups` / `reruns` / `auto_grades` | OTel: `resourceSpans` → `scopeSpans` → `spans` + span events + log records, GenAI semconv attribute names |
 | Granularity | 1 row per assistant turn | 1 span per event (LLM span, tool span, session span, …) |
@@ -34,16 +34,16 @@ prompt-telemetry sees ~5–8% of the live event surface dash0 sees. Crucially, i
 | Token usage | columns on `turns` | `gen_ai.usage.input_tokens` / `output_tokens` / `cache_read_*` / `cache_creation_*` |
 | Raw archive | zstd-compressed JSONL slice on every turn (`raw_json_z`) | none locally — only OTLP payload |
 
-Overlap: token counts, tool name+args+result, model, session id, git branch, cwd, latency. Divergence: prompt-telemetry has prompt+response text, MiniLM embeddings, clustering, and annotations; dash0 has the full multi-event timeline (compaction, permissions, subagents, teammates) that prompt-telemetry can't see from its Stop-only vantage.
+Overlap: token counts, tool name+args+result, model, session id, git branch, cwd, latency. Divergence: telemetrify has prompt+response text, MiniLM embeddings, clustering, and annotations; dash0 has the full multi-event timeline (compaction, permissions, subagents, teammates) that telemetrify can't see from its Stop-only vantage.
 
 ## Storage + transport
 
-- **prompt-telemetry**: SQLite-vec WAL DB at `data/prompts.db`. Zero network. Stop hook → local write → done. Privacy by inertia: data is on this Mac unless `bin/sync` pushes to your Postgres.
+- **telemetrify**: SQLite-vec WAL DB at `data/prompts.db`. Zero network. Stop hook → local write → done. Privacy by inertia: data is on this Mac unless `bin/sync` pushes to your Postgres.
 - **dash0**: spawns Go binary on every event → builds OTLP/HTTP JSON → POSTs to `DASH0_OTLP_URL` (default Dash0 SaaS). Also writes raw event payloads to `~/.claude/plugins/data/dash0-agent-plugin/events.jsonl` as a side log. Can be pointed at a local OTLP collector — and that is what makes the integration in §9 work.
 
 ## Search / analysis features
 
-Unique to **prompt-telemetry**:
+Unique to **telemetrify**:
 
 - Hybrid retrieval: FTS5 BM25 ∪ sqlite-vec cosine fused via Reciprocal Rank Fusion (k=60), 50/side fanout.
 - MiniLM-L6-v2 embeddings for both full-turn and prompt-only similarity.
@@ -65,7 +65,7 @@ Unique to **dash0**:
 
 ## Privacy defaults
 
-| | prompt-telemetry | dash0 |
+| | telemetrify | dash0 |
 |---|---|---|
 | Prompt text | stored raw + zstd raw archive | **omitted** (`OMIT_IO=true`) |
 | Tool I/O | stored raw | **omitted** (`OMIT_IO=true`, 16 KB cap when on) |
@@ -73,21 +73,21 @@ Unique to **dash0**:
 | Repo / branch | stored | sent as `dash0.gen_ai.vcs.*` |
 | Network | none | OTLP/HTTP to remote |
 
-prompt-telemetry is privacy-by-locality; dash0 is privacy-by-redaction. Different threat models.
+telemetrify is privacy-by-locality; dash0 is privacy-by-redaction. Different threat models.
 
 ## Cost
 
-- **prompt-telemetry**: $0 ongoing. CPU at capture (MiniLM embed + HDBSCAN nearest + optional LLM-judge — judge spend is on your Anthropic key).
+- **telemetrify**: $0 ongoing. CPU at capture (MiniLM embed + HDBSCAN nearest + optional LLM-judge — judge spend is on your Anthropic key).
 - **dash0**: SaaS with a free tier; needs an account, an `AUTH_TOKEN` in keychain, and an `OTLP_URL`. Self-hostable in principle since it's pure OTLP.
 
 ## When to use which
 
-- **prompt-telemetry** when you want to: search "what did I ask Claude about HDBSCAN last month", cluster paraphrased prompts, replay a regression against today's CLI, grade a turn with an LLM jury, train a classifier from your annotations, or answer SQL questions about your own habits — all offline.
+- **telemetrify** when you want to: search "what did I ask Claude about HDBSCAN last month", cluster paraphrased prompts, replay a regression against today's CLI, grade a turn with an LLM jury, train a classifier from your annotations, or answer SQL questions about your own habits — all offline.
 - **dash0** when you want to: see a multi-agent fan-out as a trace timeline with compaction, permission, and subagent spans; collaborate with someone else on a session; or feed Claude Code activity into an existing OTel pipeline alongside your other services.
-- **Both** when you want: dash0's wide event surface **and** prompt-telemetry's search/cluster/rerun loop on the same data. That's what migration 016 enables.
+- **Both** when you want: dash0's wide event surface **and** telemetrify's search/cluster/rerun loop on the same data. That's what migration 016 enables.
 
 ## Integration potential
 
-`src/prompt_telemetry/migrations/016_dash0_otel.sql` (already in this repo) adds four additive tables: `dash0_resources`, `dash0_spans`, `dash0_span_events`, `dash0_log_records`. They join back into the existing schema on `dash0_spans.conversation_id == sessions.id` (Claude session UUID).
+`src/telemetrify/migrations/016_dash0_otel.sql` (already in this repo) adds four additive tables: `dash0_resources`, `dash0_spans`, `dash0_span_events`, `dash0_log_records`. They join back into the existing schema on `dash0_spans.conversation_id == sessions.id` (Claude session UUID).
 
-Wiring: stand up a local OTLP/HTTP sink that writes those tables; point dash0 at it via `DASH0_OTLP_URL=http://127.0.0.1:<port>` (and leave Dash0 SaaS off, or run a dual-pipeline collector). Net effect: prompt-telemetry's analysis layer gets dash0's full 24-event capture surface while data stays on the Mac. The operator-side runbook is at `deploy/dash0-integration.md`.
+Wiring: stand up a local OTLP/HTTP sink that writes those tables; point dash0 at it via `DASH0_OTLP_URL=http://127.0.0.1:<port>` (and leave Dash0 SaaS off, or run a dual-pipeline collector). Net effect: telemetrify's analysis layer gets dash0's full 24-event capture surface while data stays on the Mac. The operator-side runbook is at `deploy/dash0-integration.md`.

@@ -1,8 +1,16 @@
-# prompt-telemetry
+# telemetrify
 
-A per-prompt telemetry pipeline for Claude Code. Every turn (prompt, response, tool calls, tokens, attribution, thinking, full raw archive) lands in a local SQLite DB the moment the assistant finishes a turn. A FastAPI UI on `localhost:8767` lets you semantically search, filter, cluster, annotate, replay-and-diff, and chart the corpus.
+<p align="left">
+  <img src="assets/brand/mark.svg" width="56" alt="telemetrify mark">
+</p>
 
-Local-first. No third-party services required.
+> **Per-prompt telemetry capture, semantic search, and replay for Claude Code sessions.** Local-first.
+
+`telemetrify` is a no-cloud pipeline for Claude Code. Every turn — prompt, response, tool calls, tokens, attribution, thinking, full raw archive — lands in a local SQLite DB the moment the assistant finishes a turn. A FastAPI UI on `localhost:8767` lets you semantically search, filter, cluster, annotate, replay-and-diff, and chart the corpus.
+
+No third-party services required. The whole thing runs out of `~/Projects/telemetrify`.
+
+> **Heads-up — renamed.** This project was previously `prompt-telemetry` (Python module `prompt_telemetry`). The Python package is now `telemetrify`; a thin back-compat shim keeps `import prompt_telemetry` working with a `DeprecationWarning`. Update your imports, then drop `src/prompt_telemetry/` whenever you're ready.
 
 ---
 
@@ -23,7 +31,7 @@ For every assistant turn, the Stop hook records:
 ## Architecture
 
 ```
-~/Projects/prompt-telemetry/
+~/Projects/telemetrify/
 ├── pyproject.toml             # uv-managed
 ├── README.md
 ├── data/                      # gitignored
@@ -31,7 +39,7 @@ For every assistant turn, the Stop hook records:
 │   ├── backups/               # auto-snapshots before destructive migrations
 │   ├── reruns/                # one workspace per rerun (cmd.json + stdout.json)
 │   └── capture.log
-├── src/prompt_telemetry/
+├── src/telemetrify/
 │   ├── migrations/00{1..7}_*.{sql,py}   # versioned schema, fcntl-locked applier
 │   ├── db.py                  # connect() applies migrations
 │   ├── transcript.py          # JSONL → Turn dataclass
@@ -63,7 +71,7 @@ For every assistant turn, the Stop hook records:
 ## Setup
 
 ```bash
-cd ~/Projects/prompt-telemetry
+cd ~/Projects/telemetrify
 uv sync
 ```
 
@@ -85,10 +93,10 @@ Optionally backfill historical sessions (`~/.claude/projects/**/*.jsonl`):
 
 ```bash
 bin/backfill --no-embed       # fast metadata-only pass
-python -m prompt_telemetry.embed_missing
-python -m prompt_telemetry.backfill_prompt_vec
+python -m telemetrify.embed_missing
+python -m telemetrify.backfill_prompt_vec
 bin/recluster
-python -m prompt_telemetry.followups   # in the package; see below for CLI form
+python -m telemetrify.followups   # in the package; see below for CLI form
 ```
 
 Run the UI:

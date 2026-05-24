@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/.venv/bin/python" -m prompt_telemetry.ai.diet "$@"
+exec "$ROOT/.venv/bin/python" -m telemetrify.ai.diet "$@"

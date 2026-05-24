@@ -1,12 +1,17 @@
 import SwiftUI
 import RoccoPulseCore
 
-/// The system-image label rendered next to the menu-bar item. Derives both
-/// the SF Symbol and a `.foregroundStyle` color from `(snapshot, lastError,
-/// freshness)` via `IconState` + `TierPalette`.
+/// The mark rendered next to the menu-bar item. Drives the custom
+/// `RoccoMark` view: a chip-die silhouette with a tier-tinted pulse dot
+/// that animates when the agent is fresh and the SSH probe succeeded.
 ///
-/// v0 uses `waveform.path.ecg` for every state and only varies the color —
-/// the SF Symbol can be tuned later without breaking the IconState contract.
+/// Color choices:
+///   .fresh        → body=.primary,   dot=tier color (green/yellow/etc.),
+///                   animated
+///   .stale        → body=.secondary, dot=.systemYellow
+///   .veryStale    → body=.secondary, dot=.systemRed
+///   .unreachable  → body=.secondary, dot hidden (a small "no signal" cue)
+///   .unknown      → body=.secondary, dot hidden, IconState yields neutral
 struct MenuBarIcon: View {
     @ObservedObject var store: StatusStore
 
@@ -16,31 +21,30 @@ struct MenuBarIcon: View {
             lastError: store.lastError,
             now: Date()
         )
-        Image(systemName: symbolName(for: state))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(Color(nsColor: tintColor(for: state)))
+        RoccoMark(
+            bodyTint: bodyColor(for: state),
+            pulseTint: dotColor(for: state),
+            pulseDotActive: state == .fresh,
+            pulseDotHidden: state == .unreachable || state == .unknown
+        )
     }
 
-    private func symbolName(for state: IconState) -> String {
+    private func bodyColor(for state: IconState) -> Color {
         switch state {
-        case .fresh, .stale, .veryStale: return "waveform.path.ecg"
-        case .unreachable: return "waveform.path.ecg.rectangle"
-        case .unknown: return "questionmark.circle"
+        case .fresh:                 return .primary
+        case .stale, .veryStale,
+             .unreachable, .unknown: return .secondary
         }
     }
 
-    private func tintColor(for state: IconState) -> NSColor {
+    private func dotColor(for state: IconState) -> Color {
         switch state {
         case .fresh:
-            // Tier-tinted only when fresh — stale states deliberately desaturate
-            // so the user can spot a stale read at a glance.
-            return TierPalette.color(for: store.snapshot?.tier)
-        case .stale:
-            return .systemYellow
-        case .veryStale, .unreachable:
-            return .systemRed
-        case .unknown:
-            return .systemGray
+            return Color(nsColor: TierPalette.color(for: store.snapshot?.tier))
+        case .stale:       return Color(nsColor: .systemYellow)
+        case .veryStale:   return Color(nsColor: .systemRed)
+        case .unreachable: return Color(nsColor: .systemRed)
+        case .unknown:     return Color(nsColor: .systemGray)
         }
     }
 }

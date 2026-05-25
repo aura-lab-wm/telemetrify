@@ -219,7 +219,7 @@ def test_collect_snapshot_returns_full_schema(agent, nvidia_csv, ss_output):
         "errors",
     }
     assert set(snap.keys()) == expected_top
-    assert snap["schema_version"] == 2
+    assert snap["schema_version"] == 3
     assert snap["host"] == "rocco.cs.wm.edu"
     assert snap["ts"] == 1737759600
 

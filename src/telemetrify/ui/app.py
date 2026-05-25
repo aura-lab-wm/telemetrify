@@ -809,3 +809,92 @@ def turn_rerun_diff(request: Request, turn_id: int, rerun_id: int):
         "turn": turn, "rerun": rerun, "diff_html": diff_html,
         "judgment": judgment, "q": "",
     })
+
+
+# ─── Round D1: AI port classifier ────────────────────────────────────────
+@app.post("/api/classify-ports", response_class=JSONResponse)
+async def api_classify_ports(request: Request):
+    """Classify a batch of unknown listening ports using the LLM router.
+
+    Body:
+      { "ports": [
+          {"port": 5555,
+           "proc": "",
+           "command": "",
+           "user": "",
+           "probe": "non-http: Empty reply"},
+          ...
+      ]}
+
+    Response:
+      { "classifications": [
+          {"port": 5555, "kind": "zmq", "label": "ZeroMQ socket",
+           "confidence": "high", "reasoning": "binary protocol on
+                                              ZMQ default port"},
+          ...
+      ],
+        "backend": "rocco" | "localmac" | "ollama" | "anthropic",
+        "cost_usd": 0.00012
+      }
+
+    Uses the same LLM router as `/ask` — Rocco vLLM first when up,
+    then Mac-local Ollama, then Ollama Cloud, then Anthropic. Always
+    Haiku-class (cheap, fast) — port classification is not a
+    reasoning-heavy task.
+    """
+    import json as _json
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "body must be JSON"}, status_code=400)
+
+    raw_ports = body.get("ports")
+    if not isinstance(raw_ports, list) or not raw_ports:
+        return JSONResponse({"error": "ports[] required"}, status_code=400)
+
+    # Trim to a sane size — the prompt grows with N and Haiku has limits.
+    raw_ports = raw_ports[:25]
+
+    # Render the ports block — each port becomes one bullet for the LLM.
+    bullets = []
+    for p in raw_ports:
+        try:
+            port = int(p.get("port"))
+        except (TypeError, ValueError):
+            continue
+        proc = str(p.get("proc") or "").strip()
+        cmd = str(p.get("command") or "").strip()[:120]
+        user = str(p.get("user") or "").strip()
+        probe = str(p.get("probe") or "").strip()[:200]
+        line = f"- port {port}"
+        if proc:  line += f"  proc={proc!r}"
+        if user:  line += f"  user={user!r}"
+        if cmd:   line += f"  command={cmd!r}"
+        if probe: line += f"\n    probe: {probe!r}"
+        bullets.append(line)
+    if not bullets:
+        return JSONResponse({"error": "no valid ports"}, status_code=400)
+
+    from ..ai.client import AnthropicClient
+    from ..ai import prompts as P
+    conn = connect()
+    client = AnthropicClient(conn)
+    try:
+        result = client.call(
+            feature="classify_ports",
+            template=P.CLASSIFY_PORTS,
+            user_kwargs={"ports_block": "\n".join(bullets)},
+            schema={},   # free-form JSON; we parse and forward as-is
+            max_tokens=900,
+            timeout=20.0,
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=502)
+
+    # The router returns raw_text; extract_json then return verbatim.
+    try:
+        parsed = AnthropicClient._extract_json(result.raw_text)
+    except Exception:
+        parsed = {"classifications": [], "raw": result.raw_text}
+    parsed.setdefault("backend", "anthropic")
+    return JSONResponse(parsed)

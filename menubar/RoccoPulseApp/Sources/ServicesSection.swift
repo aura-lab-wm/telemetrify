@@ -77,36 +77,48 @@ struct ServicesSection: View {
 private struct UnknownPortsDisclosure: View {
     let ports: [RoccoStatus.Service]
     @State private var isExpanded: Bool = false
+    @State private var classifying: Bool = false
+    @State private var classifications: [Int: PortClassifierClient.Classification] = [:]
+    @State private var classifyError: String? = nil
+    private let client = PortClassifierClient()
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(ports, id: \.id) { svc in
-                        HStack(spacing: 6) {
-                            Circle().fill(Color.secondary)
-                                .frame(width: 5, height: 5)
-                            Text("port \(String(svc.port))")
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(.primary)
-                            if let u = svc.user, !u.isEmpty, u != "0" {
-                                Text("· \(u)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                            if let cmd = svc.command, !cmd.isEmpty {
-                                Text(cmd)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 6) {
+                // Toolbar: "Identify with AI" button + status
+                HStack(spacing: 8) {
+                    Button {
+                        Task { await runClassification() }
+                    } label: {
+                        Label(classifying ? "Identifying…" : "Identify with AI",
+                              systemImage: "sparkles")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(classifying)
+                    if classifying {
+                        ProgressView().controlSize(.mini)
+                    }
+                    Spacer()
+                }
+                if let err = classifyError {
+                    Text(err)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
+
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(ports, id: \.id) { svc in
+                            unknownRow(svc)
                         }
                     }
                 }
+                .frame(maxHeight: 140)
             }
-            .frame(maxHeight: 140)
+            .padding(.top, 4)
         } label: {
             HStack(spacing: 4) {
                 Text("Unknown ports")
@@ -121,6 +133,83 @@ private struct UnknownPortsDisclosure: View {
             }
         }
         .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private func unknownRow(_ svc: RoccoStatus.Service) -> some View {
+        let cls = classifications[svc.port]
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Circle().fill(cls != nil ? Color.accentColor : Color.secondary)
+                .frame(width: 5, height: 5)
+            Text("port \(String(svc.port))")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.primary)
+            if let cls {
+                // AI label takes precedence over the raw user/cmd
+                Text(cls.label)
+                    .font(.caption2.bold())
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(cls.kind)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                ConfidenceChip(confidence: cls.confidence)
+            } else {
+                if let u = svc.user, !u.isEmpty, u != "0" {
+                    Text("· \(u)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                if let cmd = svc.command, !cmd.isEmpty {
+                    Text(cmd)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else if let probe = svc.probe, !probe.isEmpty {
+                    Text(probe.replacingOccurrences(of: "\n", with: " · "))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .help(cls?.reasoning ?? (svc.probe ?? ""))
+    }
+
+    private func runClassification() async {
+        guard !classifying else { return }
+        classifying = true
+        classifyError = nil
+        defer { classifying = false }
+        do {
+            classifications = try await client.classify(ports)
+        } catch {
+            classifyError = error.localizedDescription
+        }
+    }
+}
+
+private struct ConfidenceChip: View {
+    let confidence: String
+    var body: some View {
+        Text(confidence.lowercased())
+            .font(.system(size: 9, design: .monospaced))
+            .foregroundStyle(color)
+            .padding(.horizontal, 4).padding(.vertical, 1)
+            .background(color.opacity(0.18))
+            .clipShape(Capsule())
+    }
+    private var color: Color {
+        switch confidence.lowercased() {
+        case "high":   return .green
+        case "medium": return .yellow
+        case "low":    return .orange
+        default:       return .secondary
+        }
     }
 }
 

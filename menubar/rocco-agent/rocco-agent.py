@@ -37,7 +37,7 @@ from typing import Any
 # Constants / config
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = 2  # v2: services[] gain `kind`, `command`, `user` fields
+SCHEMA_VERSION = 3  # v3: unknown services[] gain `probe` (HTTP banner)
 POLL_INTERVAL_S = 5.0
 VLLM_BASE_URL = os.environ.get("ROCCO_VLLM_BASE_URL", "http://localhost:8000")
 VLLM_PROBE_TIMEOUT_S = 1.0
@@ -293,6 +293,110 @@ def enrich_services(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# HTTP banner probe — gives the AI classifier something to chew on
+# ---------------------------------------------------------------------------
+
+# Cache so we don't re-probe a port on every 5s tick. Most services don't
+# change their banner. Mapped: port → (probe_text, written_at_epoch).
+_PROBE_CACHE: dict[int, tuple[str, float]] = {}
+_PROBE_TTL_S = 60.0
+_PROBE_MAX_PER_TICK = 10  # cap so a host with 30 unknown ports doesn't stall
+_PROBE_TIMEOUT_S = 1.0
+_PROBE_MAX_BYTES = 240   # first ~3 header lines is plenty for the LLM
+
+
+def probe_http_banner(port: int, timeout: float = _PROBE_TIMEOUT_S) -> str:
+    """HEAD-style probe on localhost:port. Returns a short string the
+    AI classifier can use to guess what the service is.
+
+    Returns one of:
+      - "HTTP/1.1 200 ...\\nContent-Type: application/json\\n..." (first
+        ~240 bytes of response headers for an HTTP service)
+      - "non-http: <reason>" when the port isn't HTTP (empty reply,
+        connection refused after connect, binary protocol like ZMQ, …)
+      - "" when even the connect failed
+    """
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}",
+            method="HEAD",
+            headers={"User-Agent": "rocco-agent/probe"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = getattr(resp, "status", 200)
+            headers = []
+            for k, v in (resp.headers.items() if resp.headers else []):
+                line = f"{k}: {v}"
+                headers.append(line)
+                if sum(len(h) for h in headers) > _PROBE_MAX_BYTES:
+                    break
+            text = f"HTTP/1.1 {status}\n" + "\n".join(headers)
+            return text[:_PROBE_MAX_BYTES]
+    except urllib.error.HTTPError as e:
+        # Real HTTP server that returned non-2xx — that's still useful
+        # signal (e.g. 403 Forbidden, 404 Not Found, 401 Unauthorized).
+        try:
+            headers = list((e.headers.items() if e.headers else []))[:5]
+            text = f"HTTP/1.1 {e.code}\n" + "\n".join(f"{k}: {v}" for k, v in headers)
+            return text[:_PROBE_MAX_BYTES]
+        except Exception:
+            return f"HTTP/1.1 {e.code}"
+    except urllib.error.URLError as e:
+        # ConnectionRefused / Network unreachable: probably the port has
+        # closed since `ss` saw it (transient). Or it's a binary protocol
+        # that hung up on our HTTP request (ZMQ, gRPC, redis, postgres).
+        reason = str(e.reason) if hasattr(e, "reason") else str(e)
+        return f"non-http: {reason}"[:_PROBE_MAX_BYTES]
+    except (TimeoutError, OSError) as e:
+        return f"non-http: {e!r}"[:_PROBE_MAX_BYTES]
+    except Exception as e:  # noqa: BLE001 — never crash the daemon
+        return f"non-http: probe error {e!r}"[:_PROBE_MAX_BYTES]
+
+
+def enrich_unknown_probes(services: list[dict[str, Any]]) -> None:
+    """For every service whose kind is 'unknown', attach a `probe` field
+    with whatever the port responds to a HEAD request. Cached for
+    _PROBE_TTL_S so we don't re-probe every tick.
+
+    Only probes up to _PROBE_MAX_PER_TICK ports per call — a host with
+    dozens of unknowns shouldn't make the poll cycle take 30 seconds.
+    Subsequent ticks naturally cover the rest.
+    """
+    import concurrent.futures as _cf
+
+    now = time.time()
+    needs_probing: list[dict[str, Any]] = []
+    for svc in services:
+        if svc.get("kind") != "unknown":
+            continue
+        port = svc.get("port")
+        if not isinstance(port, int):
+            continue
+        cached = _PROBE_CACHE.get(port)
+        if cached and (now - cached[1]) < _PROBE_TTL_S:
+            svc["probe"] = cached[0]
+            continue
+        needs_probing.append(svc)
+
+    if not needs_probing:
+        return
+
+    # Parallel probe, capped, 1s timeout each. ThreadPool is fine for
+    # network IO; ~10 probes in ~1s.
+    batch = needs_probing[:_PROBE_MAX_PER_TICK]
+    with _cf.ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(probe_http_banner, svc["port"]): svc for svc in batch}
+        for fut in _cf.as_completed(futures, timeout=_PROBE_TIMEOUT_S * 2):
+            svc = futures[fut]
+            try:
+                banner = fut.result()
+            except Exception:  # noqa: BLE001
+                banner = ""
+            _PROBE_CACHE[svc["port"]] = (banner, now)
+            svc["probe"] = banner
+
+
+# ---------------------------------------------------------------------------
 # vLLM probe
 # ---------------------------------------------------------------------------
 
@@ -520,6 +624,10 @@ def collect_snapshot() -> dict[str, Any]:
     errors: list[str] = []
     gpus = _run_nvidia_smi(errors)
     services = enrich_services(_run_ss(errors))
+    # Tag each unknown listener with an HTTP banner (when it speaks
+    # HTTP) — gives the Mac's AI classifier the only signal it has
+    # for ports that ss couldn't attach a pid/command to.
+    enrich_unknown_probes(services)
 
     # Prefer the on-host model_manager when it's installed — that's what
     # every other consumer of "is vLLM up?" already reads, so we agree

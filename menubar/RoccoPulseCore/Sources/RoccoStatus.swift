@@ -122,17 +122,25 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         public let command: String?     // /proc/<pid>/cmdline, NUL→space
         public let user: String?        // login name resolved from Uid:
 
+        // Schema v3 — HTTP banner the agent saw when probing
+        // `localhost:port`. Populated only for `kind == "unknown"`.
+        // Powers the menubar's "Identify with AI" classifier — gives
+        // the LLM enough fingerprint to distinguish ZMQ from gRPC from
+        // a Go web API from a Python ipykernel.
+        public let probe: String?
+
         public var id: String { "\(port)-\(proc)-\(pid ?? 0)" }
 
         public init(port: Int, proc: String, pid: Int?,
                     kind: String? = nil, command: String? = nil,
-                    user: String? = nil) {
+                    user: String? = nil, probe: String? = nil) {
             self.port = port
             self.proc = proc
             self.pid = pid
             self.kind = kind
             self.command = command
             self.user = user
+            self.probe = probe
         }
     }
 

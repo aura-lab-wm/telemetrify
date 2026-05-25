@@ -253,3 +253,47 @@ DIET = PromptTemplate(
         "}}"
     ),
 )
+
+
+# ─── Round D1: classify-unknown-network-ports ────────────────────────────
+# Used by the rocco-pulse menubar's "Identify with AI" button to label
+# random high-port listeners the local classifier table couldn't tag.
+# Input: a list of ports + per-port metadata (proc name, owning user,
+# HTTP banner snippet from the rocco-agent's probe). Output: structured
+# guesses with confidence. Haiku-class because port classification is a
+# pattern-matching task, not a reasoning one — keeps the OAuth bucket
+# cheap.
+CLASSIFY_PORTS = PromptTemplate(
+    version="classify-ports-v1",
+    model=MODEL_HAIKU,
+    system=(
+        "You identify network services from minimal evidence. Given a list "
+        "of listening ports with optional process names, owning Linux "
+        "users, and HTTP-banner probe text, label what each port is "
+        "likely serving. Common categories include: zmq, redis, postgres, "
+        "mysql, jupyter, vllm, ollama, ssh, http-api (Go), prometheus, "
+        "grafana, gradio, streamlit, gpu-stats, ray, tensorboard, mlflow, "
+        "wandb, ipython-kernel, ephemeral-rpc, unknown. Use specific "
+        "labels when the banner is unambiguous (e.g. 'redis' if RESP "
+        "fingerprint, 'postgres' if SSL-required line). If a Python "
+        "training-style command is visible, prefer 'training-rpc' / "
+        "'pytorch-rpc' over generic 'unknown'. Return ONLY a single JSON "
+        "object — no prose."
+    ),
+    user_template=(
+        "Classify these listening ports:\n"
+        "{ports_block}\n\n"
+        "Return JSON:\n"
+        "{{\n"
+        "  \"classifications\": [\n"
+        "    {{\n"
+        "      \"port\": <int>,\n"
+        "      \"kind\": \"<short canonical label, lowercase, hyphens ok>\",\n"
+        "      \"label\": \"<≤30-char friendly display name>\",\n"
+        "      \"confidence\": \"high|medium|low\",\n"
+        "      \"reasoning\": \"<≤20 words why>\"\n"
+        "    }}\n"
+        "  ]\n"
+        "}}"
+    ),
+)

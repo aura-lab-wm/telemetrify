@@ -41,7 +41,26 @@ public final class LifecycleCommands: @unchecked Sendable {
     }
 
     public func startVLLM() throws {
-        try run(remoteCommand: "cd \(Self.remoteProjectPath) && \(Self.remoteVenvPython) -m model_manager.manager up")
+        // `manager.py up` is IDEMPOTENT: if the manager daemon is already
+        // running it just prints "Already running, pid N" and exits 0 —
+        // which means clicking Start when the manager is alive-but-stuck
+        // (tier > 0 and vllm not running, manager loop hung or in a bad
+        // restart-backoff window) was a silent no-op. The user
+        // legitimately complained the UI "acts very dumb" because of it.
+        //
+        // Recycle the manager: `down` (kills any vllm + the manager loop)
+        // → `up` (spawns a fresh manager that re-evaluates state and
+        // starts vllm on its very first tick if tier > 0).
+        //
+        // Safe to run even when vllm is already up — `down` will stop it
+        // cleanly first, then up re-starts it via the manager. The user
+        // only sees Start when vllm is OFFLINE so that case is rare.
+        let cd = "cd \(Self.remoteProjectPath)"
+        let py = Self.remoteVenvPython
+        try run(remoteCommand:
+            "\(cd) && \(py) -m model_manager.manager down ; " +
+            "sleep 1 ; " +
+            "\(cd) && \(py) -m model_manager.manager up")
     }
 
     public func stopVLLM() throws {

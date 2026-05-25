@@ -34,7 +34,10 @@ struct ServicesSection: View {
             // of rows.
             VStack(spacing: 4) {
                 ForEach(model.rows) { row in
-                    ServiceRowView(row: row) { action in
+                    ServiceRowView(
+                        row: row,
+                        inFlight: model.inFlight.contains(row.service.id)
+                    ) { action in
                         Task { await model.perform(action: action, on: row.service) }
                     }
                 }
@@ -65,6 +68,7 @@ struct ServicesSection: View {
             }
         }
         .task(id: store.lastFetchedAt) {
+            model.bind(store: store)   // so perform() can trigger refreshes
             await model.refresh(snapshot: store.snapshot)
         }
     }
@@ -122,13 +126,18 @@ private struct UnknownPortsDisclosure: View {
 
 private struct ServiceRowView: View {
     let row: ServicesViewModel.Row
+    let inFlight: Bool
     let onAction: (ServiceAction) -> Void
 
     var body: some View {
         HStack(spacing: 10) {
+            // Pulsing dot during in-flight so the operator sees motion
+            // immediately — no more "I clicked Start and nothing
+            // happened for 15 seconds".
             Circle()
-                .fill(stateColor)
+                .fill(inFlight ? Color.accentColor : stateColor)
                 .frame(width: 8, height: 8)
+                .opacity(inFlight ? 0.55 : 1.0)
             Image(systemName: row.service.iconSymbol)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -137,7 +146,15 @@ private struct ServiceRowView: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-            if let summary = row.status.summary {
+            // Override the summary while in-flight so the operator sees
+            // the row is working. Once the prober confirms the new
+            // state, inFlight clears and the real summary returns.
+            if inFlight {
+                Text("working…")
+                    .font(.footnote)
+                    .foregroundStyle(Color.accentColor)
+                    .lineLimit(1)
+            } else if let summary = row.status.summary {
                 Text(summary)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -145,7 +162,9 @@ private struct ServiceRowView: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: 4)
-            if let action = row.service.action(for: row.status.state) {
+            if inFlight {
+                ProgressView().controlSize(.mini)
+            } else if let action = row.service.action(for: row.status.state) {
                 Button(action.label) { onAction(action) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -226,14 +245,26 @@ final class ServicesViewModel: ObservableObject {
     @Published private(set) var unknownPorts: [RoccoStatus.Service] = []
     @Published private(set) var toast: Toast?
     @Published private(set) var isBusy: Bool = false
+    /// Service IDs currently waiting on the next snapshot to confirm
+    /// their action took effect. Used to overlay a "starting…" /
+    /// "stopping…" hint in the row so the operator gets immediate
+    /// visual feedback instead of staring at the unchanged state
+    /// until the next 15-second poll fires.
+    @Published private(set) var inFlight: Set<String> = []
 
     private let prober = ServiceProber()
     private let runner: ServiceCommandRunner
     private var toastDismissTask: Task<Void, Never>?
+    private weak var store: StatusStore?
 
     init(runner: ServiceCommandRunner = DefaultServiceCommandRunner()) {
         self.runner = runner
     }
+
+    /// SwiftUI calls this from .task — we capture the store so the
+    /// action handler can trigger a fresh poll without depending on
+    /// the 15s timer for visual feedback.
+    func bind(store: StatusStore) { self.store = store }
 
     func refresh(snapshot: RoccoStatus?) async {
         isBusy = true
@@ -260,18 +291,81 @@ final class ServicesViewModel: ObservableObject {
         rows = newRows
     }
 
-    /// Run the chosen action and reflect the result as a transient toast.
-    /// The prober cache is invalidated on success so the next render shows
-    /// the post-action state.
+    /// Run the chosen action with immediate visual feedback. Three
+    /// reasons the previous version felt "very dumb" per the user:
+    ///   1. UI didn't update — only the prober cache got invalidated,
+    ///      so the row stayed in its pre-action state until the next
+    ///      15-second poll fired.
+    ///   2. No in-flight indicator — clicking Start looked identical
+    ///      to not clicking it.
+    ///   3. Big actions (vLLM start) take 30+ seconds to actually
+    ///      bind their port (Kimi-72B has 145 GB of weights to load
+    ///      from disk into VRAM), but the first re-poll fires after
+    ///      ~0s and reports "still down".
+    ///
+    /// Fix: mark the row in-flight, fire an immediate snapshot
+    /// refresh, AND schedule staggered follow-up refreshes at
+    /// 3s / 8s / 30s to catch slow lifts. Clear in-flight when the
+    /// service finally reports `.up`.
     func perform(action: ServiceAction, on service: Service) async {
         isBusy = true
+        inFlight.insert(service.id)
         defer { isBusy = false }
         do {
             let summary = try await runner.perform(action.command)
             prober.invalidate()
             showToast(.init(message: summary, isError: false))
+            await pollUntilStateSettles(for: service, expectingUp: isUpAction(action))
         } catch {
+            inFlight.remove(service.id)
             showToast(.init(message: error.localizedDescription, isError: true))
+        }
+    }
+
+    /// Whether the action is supposed to bring the service .up
+    /// (Start / Open / Restart) vs take it .down (Stop). Used to
+    /// decide when the in-flight overlay should clear.
+    private func isUpAction(_ action: ServiceAction) -> Bool {
+        switch action.command {
+        case .stopVLLM:                          return false
+        case .startVLLM, .sshRestartUnit,
+             .openURL:                           return true
+        }
+    }
+
+    /// Trigger snapshot refreshes at staggered offsets so the row
+    /// catches state changes that take a while — vLLM in particular
+    /// needs ~30s to load 145 GB of weights. Stops early once the
+    /// service reaches the expected state.
+    private func pollUntilStateSettles(for service: Service,
+                                        expectingUp: Bool) async {
+        let offsetsSec: [UInt64] = [0, 3, 8, 30]
+        for delay in offsetsSec {
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+            }
+            // ask the StatusStore to re-poll Rocco so vllm.running flips
+            await store?.refresh()
+            prober.invalidate()
+            await refresh(snapshot: store?.snapshot)
+            let settled = rows.first { $0.service.id == service.id }
+                .map { $0.status.state == .up } ?? false
+            if settled == expectingUp {
+                inFlight.remove(service.id)
+                return
+            }
+        }
+        // 30s passed and we're still not in the expected state —
+        // give up the in-flight overlay (the natural poll loop will
+        // eventually flip it). Surface a quiet warning so the user
+        // knows we tried but it didn't take.
+        inFlight.remove(service.id)
+        if !rows.isEmpty {
+            showToast(.init(
+                message: "Action sent but \(service.displayName) hasn't "
+                    + (expectingUp ? "come up" : "stopped")
+                    + " yet — check `ssh rocco journalctl --user -u rocco-agent`",
+                isError: true))
         }
     }
 

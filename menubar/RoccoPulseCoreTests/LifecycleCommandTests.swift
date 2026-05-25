@@ -18,10 +18,16 @@ final class LifecycleCommandTests: XCTestCase {
         lifecycle.delegate = delegate
         try lifecycle.startVLLM()
 
+        // startVLLM now `down ; sleep 1 ; up` instead of bare `up`. The
+        // bare `up` was a no-op when the manager daemon was already
+        // running (which it almost always is — and was the case in
+        // the bug the user filed: clicking Start did literally nothing
+        // for 15 seconds). Recycling the manager guarantees its loop
+        // re-evaluates state on a fresh start.
         XCTAssertEqual(launcher.capturedExecutable, "/usr/bin/ssh")
         XCTAssertEqual(launcher.capturedArguments, [
             "rocco",
-            "cd /scratch/amastropaolo/rocco-inference && /scratch/amastropaolo/rocco-inference/.venv/bin/python -m model_manager.manager up",
+            "cd /scratch/amastropaolo/rocco-inference && /scratch/amastropaolo/rocco-inference/.venv/bin/python -m model_manager.manager down ; sleep 1 ; cd /scratch/amastropaolo/rocco-inference && /scratch/amastropaolo/rocco-inference/.venv/bin/python -m model_manager.manager up",
         ])
         XCTAssertEqual(delegate.lines, ["starting vllm", "port 8000 bound"])
     }

@@ -8,9 +8,47 @@
 
 `telemetrify` is a no-cloud pipeline for Claude Code. Every turn — prompt, response, tool calls, tokens, attribution, thinking, full raw archive — lands in a local SQLite DB the moment the assistant finishes a turn. A FastAPI UI on `localhost:8767` lets you semantically search, filter, cluster, annotate, replay-and-diff, and chart the corpus.
 
-No third-party services required. The whole thing runs out of `~/Projects/telemetrify`.
+No third-party services required for capture. The whole thing runs out of `~/Projects/telemetrify`.
 
 > **Heads-up — renamed.** This project was previously `prompt-telemetry` (Python module `prompt_telemetry`). The Python package is now `telemetrify`; a thin back-compat shim keeps `import prompt_telemetry` working with a `DeprecationWarning`. Update your imports, then drop `src/prompt_telemetry/` whenever you're ready.
+
+---
+
+## Project shape — telemetrify + rocco-pulse + rocco-agent
+
+Telemetrify is **three programs that ship from this one repo**, not a single monolith. They cooperate so the "ask the corpus" feature (`/ask`) can run a large model (Kimi-Dev-72B BF16, ~145 GB) on a remote GPU box without you ever leaving the Mac.
+
+```
+┌──────────────────────────── this repo (~/Projects/telemetrify) ────────────────────────────┐
+│                                                                                            │
+│   src/telemetrify/        ←  the Python pipeline + FastAPI UI on localhost:8767            │
+│                              everything that captures turns, embeds, clusters, asks        │
+│                                                                                            │
+│   menubar/                ←  TWO subordinate programs that exist BECAUSE telemetrify       │
+│                              wants to run heavy LLM inference on a remote GPU server:      │
+│                                                                                            │
+│     RoccoPulse{App,Core}  ←  • macOS menubar app (Swift / SwiftUI MenuBarExtra)            │
+│                                "is Rocco up? which model is loaded? which tier?            │
+│                                 is /ask going to land on Rocco or fall back to Anthropic?" │
+│                                                                                            │
+│     rocco-agent/          ←  • Python daemon that runs ON Rocco itself (systemd --user)    │
+│                                Polls nvidia-smi + model_manager every 5s, writes           │
+│                                ~/.cache/rocco-status.json. SSH-readable by the Mac.        │
+│                                                                                            │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Why rocco-pulse is part of telemetrify, not a separate project.** Telemetrify's `/ask` page routes every QA call through a 4-tier LLM stack (Rocco vLLM → Mac-local Ollama → Ollama Cloud → Anthropic). Rocco is the *primary* tier — it's the only one that's free, fast, and serves a 72B-parameter model. But Rocco is a shared lab GPU box: vLLM dies when other users grab the cards, comes back when they release them, and you have no way to know which from the Mac without SSHing in.
+
+`rocco-pulse` is the operational dashboard for telemetrify's Rocco backend. Without it you'd:
+- not know when `/ask` is silently falling back to your Anthropic OAuth quota (expensive, slow)
+- not know which model `/ask` is actually using right now
+- have to SSH to Rocco to start/stop vLLM by hand
+- have no live read on GPU util / mem / temperature on the lab box
+
+With it, the menubar always tells you the tier + the running model + GPU stats, and the popover has a one-click Start/Stop for the remote vLLM. Same data flows the prompt-submit hook reads, so the hook and the menubar can never disagree.
+
+If you only ever use telemetrify with `ANTHROPIC_API_KEY` (no remote GPU box), rocco-pulse is unused and harmless. Skip building it.
 
 ---
 
@@ -196,7 +234,7 @@ The daily $ cap (`AI_BUDGET_USD_PER_DAY`) counts only Anthropic spend. Local-tie
 ssh -L 18000:localhost:8000 -fN rocco                 # one-time, lives 10 min after disconnect
 ```
 
-The companion **rocco-pulse** menu-bar app (`menubar/`) shows GPU util / vLLM status / tier badge so you can see at a glance which backend `/ask` will hit. Build + install: `make -C menubar install`. The Rocco-side polling daemon ships in `menubar/rocco-agent/` — one-time install via `bash menubar/rocco-agent/install.sh rocco`.
+**rocco-pulse** (the menubar app described in the architecture section above) is the GUI for this same backend stack — same tier order, same `model_manager` source of truth. If you're running telemetrify against Rocco, install it: `bash menubar/rocco-agent/install.sh rocco` then `make -C menubar install`. If you're Anthropic-only, skip it.
 
 ---
 

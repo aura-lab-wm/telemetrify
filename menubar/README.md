@@ -1,9 +1,26 @@
-# rocco-pulse
+# rocco-pulse — telemetrify's operational dashboard for its remote LLM backend
 
-A macOS menubar app that surfaces the live state of **Rocco** (the CS lab GPU
-box) — GPU util / mem / temp, vLLM up/down, model loaded, tier badge — and
-lets you start/stop vLLM in one click. Sits next to the clock; no dock icon,
-no main window.
+This is **not a standalone tray app.** It's a subordinate of the parent
+[`telemetrify`](../README.md) project, and it exists because telemetrify runs
+its heavy LLM inference (`/ask`, planner, synthesizer) on **Rocco** — a shared
+CS-lab GPU server that hosts a 72B-parameter model (Kimi-Dev-72B BF16, ~145 GB,
+4× L40S). Without rocco-pulse you have no visible signal whether your next
+`/ask` call will land on Rocco (free, fast, private) or silently fall through
+to your Anthropic OAuth bucket (paid, rate-limited, leaves the box).
+
+**What it surfaces** (macOS menu-bar, no dock icon, no main window):
+- 🟢/🔴 tier badge (4 GPUs free → green; all busy → red), live model name
+- GPU util / mem / temp per card
+- vLLM up/down · port · "what model is configured to load"
+- One-click **Start / Stop** for the remote vLLM (recycles `model_manager.py`
+  on Rocco; no manual SSH)
+- AI-classified "Unknown ports" — calls telemetrify's `/api/classify-ports`
+  to label random listeners (ZMQ / IPython kernel / Jupyter / …) using
+  the same LLM router stack `/ask` uses
+
+**The bolt indicator** on the menubar icon goes from circle → glowing
+lightning-bolt the moment Rocco's vLLM is up — so you can tell at a glance
+that the inference rig is hot before you even open the popover.
 
 ```
 ~/Projects/telemetrify/menubar/

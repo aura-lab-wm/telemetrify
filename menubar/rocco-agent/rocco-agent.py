@@ -49,6 +49,23 @@ STATUS_PATH = Path(
 )
 IDLE_UTIL_THRESHOLD_PCT = 5  # "idle" = GPU util strictly below this
 
+# Optional integration with the on-host `model_manager` project. When this
+# project is present we use it as the AUTHORITATIVE source for vLLM
+# liveness, configured model id, and tier — because that's what every
+# other consumer on the host already reads (the prompt-submit hook, etc.).
+# When it's absent we silently fall back to the curl-the-port path so the
+# agent still works on a vanilla GPU box that doesn't have the manager.
+MANAGER_ROOT = Path(
+    os.environ.get("ROCCO_MANAGER_ROOT", "/scratch/amastropaolo/rocco-inference")
+)
+MANAGER_PYTHON = Path(
+    os.environ.get(
+        "ROCCO_MANAGER_PYTHON",
+        str(MANAGER_ROOT / ".venv" / "bin" / "python"),
+    )
+)
+MANAGER_PROBE_TIMEOUT_S = 3.0
+
 # Process start time, used to compute agent_uptime_s.
 _AGENT_START_TS = time.time()
 
@@ -195,6 +212,62 @@ def probe_vllm(base_url: str, timeout: float = VLLM_PROBE_TIMEOUT_S) -> dict[str
         return {"running": False, "model": None}
 
 
+def probe_via_manager(
+    project_root: Path = MANAGER_ROOT,
+    python: Path = MANAGER_PYTHON,
+    timeout: float = MANAGER_PROBE_TIMEOUT_S,
+) -> dict[str, Any] | None:
+    """Authoritative vLLM/state probe via `python -m model_manager.manager status`.
+
+    Returns a dict with at minimum:
+      {"running": bool, "model": str|None, "port": int|None,
+       "model_id": str|None, "description": str|None}
+    OR `None` if the manager isn't installed / failed / returned bad JSON
+    — in which case the caller should fall back to the curl probe so the
+    agent still works on hosts that don't have the manager project.
+
+    We trust the manager over `curl localhost:8000` because EVERY other
+    consumer on the host (Mac prompt-submit hooks, CI, the human running
+    `manager status` interactively) reads from the same source — single
+    source of truth means no more "the hook says RUNNING but the popover
+    says offline" divergence.
+    """
+    if not python.exists() or not project_root.exists():
+        return None
+    try:
+        result = subprocess.run(
+            [str(python), "-m", "model_manager.manager", "status"],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    state = payload.get("state") or {}
+    running = bool(state.get("vllm_running"))
+    full_id = state.get("model_id") or ""
+    # "moonshotai/Kimi-Dev-72B" → "Kimi-Dev-72B" for compact display.
+    short_model = full_id.rsplit("/", 1)[-1] if full_id else None
+    return {
+        "running": running,
+        "model": short_model if running else None,
+        # When vLLM is offline we still know the CONFIGURED model — surface
+        # it on a separate key so the menubar can render
+        # "vLLM offline · configured: Kimi-Dev-72B" instead of "idle".
+        "configured_model": short_model,
+        "port": state.get("vllm_port"),
+        "description": state.get("description"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Tier logic
 # ---------------------------------------------------------------------------
@@ -316,13 +389,21 @@ def collect_snapshot() -> dict[str, Any]:
     gpus = _run_nvidia_smi(errors)
     services = _run_ss(errors)
 
-    vllm_info = probe_vllm(VLLM_BASE_URL, timeout=VLLM_PROBE_TIMEOUT_S)
+    # Prefer the on-host model_manager when it's installed — that's what
+    # every other consumer of "is vLLM up?" already reads, so we agree
+    # with them by construction. Fall back to the HTTP probe when it's not
+    # available (e.g. on a vanilla GPU host without rocco-inference).
+    manager_info = probe_via_manager()
+    vllm_info = manager_info if manager_info is not None else \
+        probe_vllm(VLLM_BASE_URL, timeout=VLLM_PROBE_TIMEOUT_S)
 
     # Find vllm pid/port from `services` so we can enrich the vllm block.
     vllm_svc = next(
         (s for s in services if s.get("proc", "").startswith("vllm")), None
     )
-    vllm_port = vllm_svc["port"] if vllm_svc else 8000
+    vllm_port = vllm_svc["port"] if vllm_svc else (
+        vllm_info.get("port") or 8000
+    )
     vllm_pid = vllm_svc["pid"] if vllm_svc else None
 
     vllm_block = {
@@ -332,6 +413,12 @@ def collect_snapshot() -> dict[str, Any]:
         "pid": vllm_pid,
         "uptime_s": None,  # not tracked in v1
     }
+    # When vLLM is offline but a model is *configured*, surface that on a
+    # separate optional key so the menubar can render
+    # "vLLM offline · configured: Kimi-Dev-72B" instead of bland "idle".
+    configured = vllm_info.get("configured_model")
+    if configured and not vllm_block["running"]:
+        vllm_block["configured_model"] = configured
 
     tier, tier_reason = compute_tier(gpus, vllm_block)
 

@@ -245,3 +245,86 @@ def test_collect_snapshot_returns_full_schema(agent, nvidia_csv, ss_output):
     assert isinstance(snap["tier"], int)
     assert isinstance(snap["tier_reason"], str)
     assert snap["errors"] == []
+
+
+# ---------------------------------------------------------------------------
+# probe_via_manager
+# ---------------------------------------------------------------------------
+
+
+def _manager_status_json(vllm_running: bool) -> str:
+    """Real-shape JSON returned by `python -m model_manager.manager status` on
+    Rocco. Keep close to what the host actually emits so future changes there
+    surface here as test failures, not silent regressions."""
+    return json.dumps({
+        "manager_running": True,
+        "manager_pid": 3369513,
+        "vllm_running": vllm_running,
+        "state": {
+            "tier": 4,
+            "free_gpus": [0, 1, 2, 3],
+            "all_gpus": [],
+            "vllm_running": vllm_running,
+            "vllm_port": 8000,
+            "model_id": "moonshotai/Kimi-Dev-72B",
+            "quantization": None,
+            "tensor_parallel": 4,
+            "max_model_len": 32768,
+            "gpu_memory_utilization": 0.9,
+            "description": "Kimi-Dev-72B BF16 (4 GPUs, ~145 GB) — best quality",
+        },
+    })
+
+
+def test_probe_via_manager_returns_none_when_python_missing(tmp_path):
+    mod = _load_agent_module()
+    missing = tmp_path / "venv" / "bin" / "python"
+    result = mod.probe_via_manager(project_root=tmp_path, python=missing)
+    assert result is None, "missing python must yield None so caller can fall back"
+
+
+def test_probe_via_manager_parses_vllm_running(tmp_path):
+    mod = _load_agent_module()
+    fake_python = tmp_path / "python"; fake_python.touch()
+    fake_root = tmp_path; (fake_root / "marker").touch()
+    completed = MagicMock(returncode=0, stdout=_manager_status_json(True), stderr="")
+    with patch("subprocess.run", return_value=completed):
+        result = mod.probe_via_manager(project_root=fake_root, python=fake_python)
+    assert result is not None
+    assert result["running"] is True
+    assert result["model"] == "Kimi-Dev-72B", "long org/name id collapsed to short form"
+    assert result["configured_model"] == "Kimi-Dev-72B"
+    assert result["port"] == 8000
+
+
+def test_probe_via_manager_offline_still_carries_configured_model(tmp_path):
+    """The whole point: when vLLM is OFFLINE the manager still knows which
+    model is configured. Surface it on `configured_model` so the menubar can
+    render 'vLLM offline · configured: Kimi-Dev-72B'."""
+    mod = _load_agent_module()
+    fake_python = tmp_path / "python"; fake_python.touch()
+    completed = MagicMock(returncode=0, stdout=_manager_status_json(False), stderr="")
+    with patch("subprocess.run", return_value=completed):
+        result = mod.probe_via_manager(project_root=tmp_path, python=fake_python)
+    assert result is not None
+    assert result["running"] is False
+    assert result["model"] is None, "model should be None when not running"
+    assert result["configured_model"] == "Kimi-Dev-72B"
+
+
+def test_probe_via_manager_returns_none_on_bad_json(tmp_path):
+    mod = _load_agent_module()
+    fake_python = tmp_path / "python"; fake_python.touch()
+    completed = MagicMock(returncode=0, stdout="not json at all", stderr="")
+    with patch("subprocess.run", return_value=completed):
+        result = mod.probe_via_manager(project_root=tmp_path, python=fake_python)
+    assert result is None, "bad JSON → None → caller falls back to curl probe"
+
+
+def test_probe_via_manager_returns_none_on_nonzero_exit(tmp_path):
+    mod = _load_agent_module()
+    fake_python = tmp_path / "python"; fake_python.touch()
+    completed = MagicMock(returncode=2, stdout="", stderr="bang")
+    with patch("subprocess.run", return_value=completed):
+        result = mod.probe_via_manager(project_root=tmp_path, python=fake_python)
+    assert result is None

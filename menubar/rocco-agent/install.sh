@@ -61,12 +61,16 @@ ssh -t "${HOST}" "sudo loginctl enable-linger ${REMOTE_USER}" || {
     echo "      active login session on ${HOST}. Re-run with sudo to fix." >&2
 }
 
-# 4. Daemon-reload + enable + start.
-echo "==> systemctl --user daemon-reload && enable --now rocco-agent"
+# 4. Daemon-reload + enable + (re)start. `--now` only starts when the unit
+#    isn't already active, so on re-install we'd silently keep running the
+#    OLD copy of rocco-agent.py. Use `restart` to always pick up the new
+#    script we just scp'd.
+echo "==> systemctl --user daemon-reload && enable + restart rocco-agent"
 ssh -o BatchMode=yes "${HOST}" '
     set -euo pipefail
     systemctl --user daemon-reload
-    systemctl --user enable --now rocco-agent.service
+    systemctl --user enable rocco-agent.service
+    systemctl --user restart rocco-agent.service
 '
 
 echo "==> Status:"

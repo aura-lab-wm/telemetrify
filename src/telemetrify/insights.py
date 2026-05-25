@@ -233,7 +233,23 @@ def compute_all(conn, force_refresh: bool = False,
                 progress=print) -> dict[str, Any]:
     """Compute every CURATED_QUESTION whose cached entry is stale (or
     missing). `progress` is a callable receiving log lines — bin/insights
-    passes `print`, the FastAPI route passes a no-op."""
+    passes `print`, the FastAPI route passes a no-op.
+
+    Backend preference is pinned for this batch operation:
+      rocco → anthropic → ollama → localmac
+    localmac is DEAD LAST on purpose — running 14 × (planner+synth)
+    through gpt-oss:20b on the user's Mac heats the M-series chip
+    enough to spin the fans audibly. Anthropic Haiku is ~$0.001/call
+    and finishes silently. Honor an explicit user override (env var
+    already set) if present.
+    """
+    import os
+    if not os.environ.get("TELEMETRIFY_LLM_ORDER__qa"):
+        os.environ["TELEMETRIFY_LLM_ORDER__qa"] = (
+            "rocco,anthropic,ollama,localmac"
+        )
+        progress(f"[insights] backend order pinned: "
+                 f"{os.environ['TELEMETRIFY_LLM_ORDER__qa']}")
     cached = load_cached()
     entries: dict[str, Any] = dict(cached.get("entries") or {})
     for q in CURATED_QUESTIONS:

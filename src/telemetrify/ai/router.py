@@ -41,6 +41,15 @@ from .client import (
 _DEFAULT_ORDER = ("rocco", "localmac", "ollama", "anthropic")
 
 
+def _log(msg: str) -> None:
+    """Cheap diagnostic line — goes to stderr (visible in launchd's
+    ui-stderr.log and in bin/insights' nohup log) so we can debug
+    "why did the router pick X" without strace. Tagged so it's easy
+    to grep for: `grep '[router]' data/ui-stderr.log`."""
+    import sys
+    print(f"[router] {msg}", file=sys.stderr, flush=True)
+
+
 def _order_for(feature: str, default: list[str] | tuple[str, ...]) -> list[str]:
     """Resolve `TELEMETRIFY_LLM_ORDER__<feature>` → falls back to
     `TELEMETRIFY_LLM_ORDER` → falls back to the supplied default."""
@@ -186,12 +195,21 @@ class BackendRouter:
         for backend_name in order:
             backend = self._by_name.get(backend_name)
             if backend is None:
+                _log(f"skip {backend_name}: not registered")
                 continue
             try:
                 if not backend.is_available():
+                    # User-visible diagnostic: lets us reason about
+                    # WHY a request landed on a particular tier. The
+                    # "fans spinning because localmac got picked"
+                    # incident would have been resolved instantly
+                    # with this line.
+                    _log(f"skip {backend_name}: is_available()=False")
                     continue
-            except Exception:
+            except Exception as _e:
+                _log(f"skip {backend_name}: is_available() raised {_e}")
                 continue
+            _log(f"try {backend_name} ({model})")
 
             # Budget check only applies to Anthropic (local tiers are ~free).
             if backend_name == "anthropic":

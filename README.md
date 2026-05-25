@@ -6,6 +6,8 @@
 
 > **Per-prompt telemetry capture, semantic search, and replay for Claude Code sessions.** Local-first.
 
+> **An AURA Lab project.** Maintained under the lab; **original creator: Antonio Mastropaolo** (<amastropaolo@wm.edu>).
+
 `telemetrify` is a no-cloud pipeline for Claude Code. Every turn — prompt, response, tool calls, tokens, attribution, thinking, full raw archive — lands in a local SQLite DB the moment the assistant finishes a turn. A FastAPI UI on `localhost:8767` lets you semantically search, filter, cluster, annotate, replay-and-diff, and chart the corpus.
 
 No third-party services required for capture. The whole thing runs out of `~/Projects/telemetrify`.

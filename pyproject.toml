@@ -2,6 +2,7 @@
 name = "telemetrify"
 version = "0.2.0"
 description = "telemetrify — per-prompt telemetry capture, semantic search, and replay for Claude Code sessions."
+authors = [{ name = "Antonio Mastropaolo", email = "amastropaolo@wm.edu" }]
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

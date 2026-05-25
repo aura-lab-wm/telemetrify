@@ -1,4 +1,7 @@
-# Database and runtime artifacts — never commit
+# Runtime artifacts & captured telemetry — NEVER commit (esp. in a shared repo:
+# data/ holds the full local capture DB of every session). Blanket-ignore the
+# whole directory; the specific entries below are kept for clarity.
+data/
 data/prompts.db
 data/prompts.db-wal
 data/prompts.db-shm

@@ -42,7 +42,7 @@ public actor PortClassifierClient {
             case .decodeFailed(let e):
                 return "decode failed: \(e)"
             case .aiOutputUnparseable(let msg, _):
-                return "The local model gave up — \(msg). Try clicking Identify again, or check that Rocco vLLM is up."
+                return "Couldn't classify ports — \(msg). Try Identify again in a moment."
             }
         }
     }

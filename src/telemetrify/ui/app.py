@@ -855,6 +855,35 @@ def turn_rerun_diff(request: Request, turn_id: int, rerun_id: int):
 
 
 # ─── Round D1: AI port classifier ────────────────────────────────────────
+def _classify_ports_api_key() -> str:
+    """Resolve a real Anthropic API key for the port-classifier feature.
+
+    Order: ANTHROPIC_API_KEY env → key file (TELEMETRIFY_ANTHROPIC_KEY_FILE
+    or ~/.ai-spending/anthropic_key). Deliberately does NOT accept the Claude
+    Code OAuth token (ANTHROPIC_AUTH_TOKEN) — this feature must use a billed
+    sk-ant key, which has the throughput the OAuth subscription lacks.
+    """
+    import os
+    from pathlib import Path
+    key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+    if key:
+        return key
+    candidates = [
+        os.environ.get("TELEMETRIFY_ANTHROPIC_KEY_FILE"),
+        str(Path.home() / ".ai-spending" / "anthropic_key"),
+    ]
+    for path in candidates:
+        if not path:
+            continue
+        try:
+            v = Path(path).read_text().strip()
+            if v:
+                return v
+        except OSError:
+            continue
+    return ""
+
+
 @app.post("/api/classify-ports", response_class=JSONResponse)
 async def api_classify_ports(request: Request):
     """Classify a batch of unknown listening ports using the LLM router.
@@ -920,86 +949,78 @@ async def api_classify_ports(request: Request):
 
     from ..ai.client import AnthropicClient
     from ..ai import prompts as P
-    # Truthy schema (so OpenAICompatBackend enables JSON mode +
-    # guided-decoding on the wire) BUT with no `type` on the value —
-    # the in-house validate_schema() silently skips fields whose spec
-    # has no "type" key, so `classifications` (an array) passes
-    # through without the validator complaining "expected object".
-    # Without the type-less key, we'd hit either (a) JSON mode off
-    # → Kimi returns '---' free-form, or (b) JSON valid but our own
-    # validator rejects it because it doesn't know "array".
-    schema = {
-        "classifications": {},  # truthy → JSON mode; no type → no shape check
-    }
 
-    conn = connect()
-    client = AnthropicClient(conn)
+    # This feature is PINNED to Claude Opus 4.7 via a real Anthropic API key,
+    # routed through the ai-spend-proxy so the cost is tracked. Rationale:
+    #   - port classification is structured-JSON output; local models
+    #     (Rocco/Kimi) reliably return free-form text ("---") and the Claude
+    #     Code OAuth token gets 429-rate-limited — both produce the "AI gave
+    #     up" failure the user hit.
+    #   - so: real sk-ant key + Opus 4.7, no local fallback. A failure is
+    #     surfaced honestly rather than silently degrading to a local model.
+    api_key = _classify_ports_api_key()
+    if not api_key:
+        return JSONResponse(
+            {"classifications": [],
+             "error": "no Anthropic API key configured — port classification "
+                      "requires a real sk-ant key (set ANTHROPIC_API_KEY for "
+                      "the telemetrify server or write ~/.ai-spending/anthropic_key)",
+             "raw_preview": ""},
+            status_code=200,
+        )
 
-    # Pin this feature to Anthropic-first: port classification is
-    # structured-JSON output, and Anthropic Haiku follows that
-    # instruction perfectly while Kimi-Dev-72B (Rocco's vLLM) tends
-    # to return free-form text like "---\n" no matter how strict the
-    # prompt is. Haiku at ~$0.001/call for a 25-port batch is cheap
-    # enough to skip the local tiers for this one feature. Local tiers
-    # remain the fallback if Anthropic is unreachable.
     import os
-    _prev = os.environ.get("TELEMETRIFY_LLM_ORDER__classify_ports")
-    os.environ["TELEMETRIFY_LLM_ORDER__classify_ports"] = (
-        "anthropic,ollama,localmac,rocco"
+    # Route through the local spend-proxy (live-spending-tracker) so every
+    # Opus call is metered. Override with TELEMETRIFY_CLASSIFY_BASE_URL.
+    base_url = os.environ.get(
+        "TELEMETRIFY_CLASSIFY_BASE_URL", "http://localhost:7778/anthropic"
     )
 
-    def _do_call(extra_suffix: str = "") -> dict:
-        # `extra_suffix` is appended to user_kwargs on a retry to nudge
-        # a model that hallucinated bad JSON on the first pass.
-        kwargs = {"ports_block": "\n".join(bullets) + extra_suffix}
-        result = client.call(
-            feature="classify_ports",
-            template=P.CLASSIFY_PORTS,
-            user_kwargs=kwargs,
-            schema=schema,
-            max_tokens=900,
-            timeout=25.0,
+    def _call_opus(extra_suffix: str = "") -> str:
+        import anthropic
+        sys_prompt, user_prompt = P.CLASSIFY_PORTS.render(
+            ports_block="\n".join(bullets) + extra_suffix
         )
-        return {"raw": result.raw_text, "model": result.model}
+        sdk = anthropic.Anthropic(api_key=api_key, base_url=base_url, timeout=45.0)
+        resp = sdk.messages.create(
+            # Generous budget: a 25-port batch with per-port reasoning can
+            # exceed 900 tokens and truncate the JSON mid-array ("Expecting
+            # ',' delimiter"). Opus is the floor here, so give it room.
+            model="claude-opus-4-7",
+            max_tokens=3000,
+            system=sys_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        text = ""
+        for block in (resp.content or []):
+            if getattr(block, "type", None) == "text":
+                text += getattr(block, "text", "")
+        return text
 
-    out: dict = {}
+    raw = ""
     parsed: dict = {}
-    last_err: str = ""
     try:
-        out = _do_call()
-        parsed = AnthropicClient._extract_json(out["raw"])
+        raw = _call_opus()
+        parsed = AnthropicClient._extract_json(raw)
     except Exception as first_err:
-        last_err = str(first_err)
-        # One retry with a stricter "JSON ONLY" suffix. Helps when a
-        # base model on a permissive backend ignored the system prompt.
+        # One retry with a stricter "JSON ONLY" nudge before giving up.
         try:
-            out = _do_call(
+            raw = _call_opus(
                 "\n\nIMPORTANT: Respond with JSON only. "
                 "First character of your output MUST be `{`. "
                 "Do not include any commentary, no '---', no markdown."
             )
-            parsed = AnthropicClient._extract_json(out["raw"])
+            parsed = AnthropicClient._extract_json(raw)
         except Exception as second_err:
-            last_err = str(second_err) or last_err
-            # Final fallback: return an honest "couldn't parse" with
-            # the raw output for debugging. The Mac client renders
-            # this as a friendly toast instead of the scary HTTP 502.
-            preview = (out.get("raw", "") or last_err)[:200]
+            # Hard-fail: never fall back to a local model for this feature.
             return JSONResponse(
                 {"classifications": [],
-                 "error": "AI returned non-JSON",
-                 "raw_preview": preview},
+                 "error": f"Opus 4.7 unavailable: {second_err}",
+                 "raw_preview": (raw or str(second_err))[:200]},
                 status_code=200,
             )
-    # Restore the pre-call env override so other features keep their
-    # configured order (sloppy on shared os.environ, but acceptable for
-    # a single-process FastAPI server with a single Worker).
-    if _prev is None:
-        os.environ.pop("TELEMETRIFY_LLM_ORDER__classify_ports", None)
-    else:
-        os.environ["TELEMETRIFY_LLM_ORDER__classify_ports"] = _prev
 
     parsed.setdefault("classifications", [])
-    parsed.setdefault("backend", "router")
-    parsed["model_used"] = out.get("model")
+    parsed["backend"] = "anthropic"
+    parsed["model_used"] = "claude-opus-4-7"
     return JSONResponse(parsed)

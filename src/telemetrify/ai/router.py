@@ -119,21 +119,46 @@ class BackendRouter:
     # ── transient-error classification ──────────────────────────────────
     @staticmethod
     def _is_transient(exc: BaseException) -> bool:
-        """Should we fall through to the next backend?"""
+        """Should we fall through to the next backend?
+
+        Transient = "this backend can't serve us RIGHT NOW but the
+        request itself is fine" — so retrying on a different backend
+        is meaningful. Fatal = "the request is broken in a way no
+        backend will accept" — falling through wastes everyone's
+        quota on the same bad payload.
+
+        Categories:
+          - Transport errors (ConnectError, TimeoutException)         → transient
+          - 5xx server errors                                         → transient
+          - 429 rate-limit                                            → transient
+            (specifically the OAuth-tier bucket exhaustion we hit when
+            the user's Claude subscription quota is shared between
+            Claude Code and telemetrify; the NEXT backend may still
+            have budget)
+          - 503 service unavailable                                   → transient
+          - 4xx other than 429                                        → fatal
+          - everything else                                           → fatal
+        """
         # httpx transport errors
         if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
             return True
-        # 5xx → transient; 4xx → fatal (do not retry)
         if isinstance(exc, httpx.HTTPStatusError):
             resp = getattr(exc, "response", None)
             status = getattr(resp, "status_code", 0) if resp is not None else 0
-            return status >= 500
-        # anthropic SDK transport errors (optional import to keep this
-        # importable when the SDK isn't installed in some test envs).
+            return status >= 500 or status == 429
+        # anthropic SDK errors — optional import so the router stays
+        # importable in test envs without the SDK installed.
         try:
             import anthropic
-            if isinstance(exc, (anthropic.APIConnectionError, anthropic.APITimeoutError)):
+            if isinstance(exc, (anthropic.APIConnectionError,
+                                anthropic.APITimeoutError,
+                                anthropic.RateLimitError)):
                 return True
+            # Anthropic raises APIStatusError for non-2xx; inspect the code.
+            api_status_err = getattr(anthropic, "APIStatusError", None)
+            if api_status_err and isinstance(exc, api_status_err):
+                code = getattr(exc, "status_code", 0)
+                return code >= 500 or code == 429
         except Exception:
             pass
         return False

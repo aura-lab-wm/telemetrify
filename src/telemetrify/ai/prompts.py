@@ -114,8 +114,14 @@ RERUN_JUDGE = PromptTemplate(
 
 # ─── Round B1: Ask-the-Ledger planner & synthesizer ──────────────────────
 QA_PLANNER = PromptTemplate(
-    version="qa-planner-v1",
-    model=MODEL_SONNET,
+    # The planner emits a small JSON object — semantic query, optional
+    # filters, intent label, k. Haiku handles this trivially. Sonnet was
+    # ~5× more expensive on the OAuth bucket for zero quality benefit on
+    # such a structured task, so switching saves the user's Claude
+    # subscription rate-limit budget for the synthesizer where Sonnet
+    # actually earns its keep.
+    version="qa-planner-v2",
+    model=MODEL_HAIKU,
     system=(
         "You translate a user's question about their telemetrify corpus into "
         "a structured retrieval plan. Output a semantic query (the text used for "

@@ -1006,6 +1006,24 @@ body.v-page .ask-x-error {
   padding: 12px; border: 1px solid rgba(239,68,68,0.3); border-radius: var(--vradius-2);
   background: rgba(239,68,68,0.06);
 }
+body.v-page .ask-x-error .ask-x-error-title {
+  font-family: var(--vfont-sans);
+  font-size: 14px; font-weight: 600;
+  color: var(--vred);
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+body.v-page .ask-x-error .ask-x-error-body {
+  font-family: var(--vfont-sans);
+  font-size: 13px; line-height: 1.55;
+  color: var(--vfg-2);
+}
+body.v-page .ask-x-error .ask-x-error-body code {
+  font-family: var(--vfont-mono); font-size: 11.5px;
+  color: var(--vfg);
+  background: rgba(255,255,255,0.06);
+  padding: 1px 5px; border-radius: 3px;
+}
 
 body.v-page .ask-x-footer {
   display: flex; gap: 18px; align-items: center;

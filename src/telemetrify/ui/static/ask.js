@@ -174,7 +174,7 @@
             `;
           }
           else if (evt.event === "error") {
-            body.innerHTML = `<div class="ask-x-error">${evt.data}</div>`;
+            body.innerHTML = renderAskError(evt.data);
             setExchangeState(x.card, "error", "error");
             setStatus("error", "error");
           }
@@ -182,10 +182,59 @@
       }
     } catch (e) {
       x.answer_el.querySelector(".ask-x-answer-body").innerHTML =
-        `<div class="ask-x-error">${e.message}</div>`;
+        renderAskError(e.message || String(e));
       setStatus("error", "error");
       setExchangeState(x.card, "error", "error");
     }
+  }
+
+  /* Turn raw planner/synthesizer failure strings into something a human
+     can actually act on. The biggest offender is the OAuth rate-limit
+     (HTTP 429): the SDK leaks a giant Python-dict-repr of the upstream
+     JSON, which scares the operator with no actionable signal. */
+  function renderAskError(raw) {
+    raw = String(raw || "");
+    const lower = raw.toLowerCase();
+    if (lower.includes("429") || lower.includes("rate_limit") || lower.includes("rate-limit")) {
+      return `
+        <div class="ask-x-error">
+          <div class="ask-x-error-title">Anthropic rate-limited</div>
+          <div class="ask-x-error-body">
+            Your Claude subscription's shared token bucket is exhausted.
+            telemetrify and Claude Code draw from the same pool.
+            Wait for the next reset window, OR set
+            <code>ANTHROPIC_API_KEY=sk-ant-api-…</code> in
+            <code>~/.claude/settings.json</code>'s <code>env</code> block
+            to use a separate billing tier.
+          </div>
+        </div>`;
+    }
+    if (lower.includes("no available backend")) {
+      return `
+        <div class="ask-x-error">
+          <div class="ask-x-error-title">All inference backends unavailable</div>
+          <div class="ask-x-error-body">
+            Rocco vLLM is offline, Ollama isn't configured, and Anthropic
+            isn't reachable. Open the rocco-pulse menubar app to see what
+            Rocco's doing, or check <code>~/.claude/settings.json</code>.
+          </div>
+        </div>`;
+    }
+    if (lower.includes("401") || lower.includes("invalid x-api-key") || lower.includes("authentication_error")) {
+      return `
+        <div class="ask-x-error">
+          <div class="ask-x-error-title">Authentication failed</div>
+          <div class="ask-x-error-body">
+            Telemetrify couldn't authenticate with Anthropic. If you
+            installed via launchd, the process may not have read your
+            Keychain — try logging into Claude Code on this Mac and then
+            <code>bin/service restart</code>.
+          </div>
+        </div>`;
+    }
+    // Default: render verbatim, but escape so we don't inject HTML
+    const safe = raw.replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
+    return `<div class="ask-x-error">${safe}</div>`;
   }
 
   form.addEventListener("submit", (e) => {

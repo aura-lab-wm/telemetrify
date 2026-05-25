@@ -182,3 +182,51 @@ def test_per_feature_env_override_pins_backend(monkeypatch, db):
     assert rocco.calls == 0
     assert ollama.calls == 0
     assert anthropic.calls == 1
+
+
+# ---------------------------------------------------------------------------
+# 429 / rate-limit should fall through to the next backend
+# (regression for the OAuth-bucket exhaustion that bit /ask in production)
+# ---------------------------------------------------------------------------
+
+class _StubResponse:
+    def __init__(self, status_code: int): self.status_code = status_code
+
+
+def test_429_is_transient_and_falls_through():
+    """HTTP 429 from one backend must propagate the request to the next.
+    Previously 4xx was treated as fatal across the board, which meant a
+    rate-limited Anthropic call would never get retried even though Rocco
+    or Ollama might have had budget."""
+    from telemetrify.ai.router import BackendRouter
+    import httpx
+    # 429 wrapped in httpx.HTTPStatusError
+    exc = httpx.HTTPStatusError(
+        "Too Many Requests",
+        request=httpx.Request("POST", "https://example.test/"),
+        response=httpx.Response(status_code=429))
+    assert BackendRouter._is_transient(exc) is True, \
+        "429 must be classified transient so the router falls through"
+
+
+def test_503_is_transient():
+    from telemetrify.ai.router import BackendRouter
+    import httpx
+    exc = httpx.HTTPStatusError(
+        "Service Unavailable",
+        request=httpx.Request("POST", "https://example.test/"),
+        response=httpx.Response(status_code=503))
+    assert BackendRouter._is_transient(exc) is True
+
+
+def test_400_remains_fatal():
+    """A 400 Bad Request is a deterministic shape problem — falling
+    through to other backends just wastes their quota on the same
+    broken payload."""
+    from telemetrify.ai.router import BackendRouter
+    import httpx
+    exc = httpx.HTTPStatusError(
+        "Bad Request",
+        request=httpx.Request("POST", "https://example.test/"),
+        response=httpx.Response(status_code=400))
+    assert BackendRouter._is_transient(exc) is False

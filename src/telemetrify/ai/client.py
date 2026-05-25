@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -152,6 +153,53 @@ class AnthropicClient:
             # pointing at the official API for its own use — wrong for us.
             os.environ[k] = v
 
+        # Final fallback — macOS Keychain. Claude Code stores its OAuth
+        # access token under the generic-password service "Claude Code
+        # -credentials" (a JSON blob: {claudeAiOauth:{accessToken,...}}).
+        # Reach for it when both shell env AND settings.json are empty —
+        # this is exactly the launchd path that bit us: launchctl
+        # inherits a partial env (ANTHROPIC_AUTH_TOKEN="") so the SDK
+        # rejected every call with "no API key" and the router declared
+        # all backends unavailable.
+        AnthropicClient._hydrate_from_macos_keychain()
+
+    @staticmethod
+    def _hydrate_from_macos_keychain() -> None:
+        """Last-resort credential source for launchd / sandboxed processes
+        that don't inherit a shell login env. Reads
+            security find-generic-password -s 'Claude Code-credentials' -w
+        and surfaces `claudeAiOauth.accessToken` as ANTHROPIC_AUTH_TOKEN.
+        No-op when ANTHROPIC_AUTH_TOKEN is already set OR when the
+        Keychain query fails (linux/CI/other-OS, item missing, denied).
+        """
+        if os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+            return
+        if sys.platform != "darwin":
+            return
+        try:
+            import subprocess as _sp
+            import json as _json
+            result = _sp.run(
+                ["/usr/bin/security", "find-generic-password",
+                 "-s", "Claude Code-credentials", "-w"],
+                capture_output=True, text=True, timeout=2.5, check=False,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, never crash callers
+            return
+        if result.returncode != 0:
+            return
+        raw = (result.stdout or "").strip()
+        if not raw:
+            return
+        try:
+            blob = _json.loads(raw)
+        except _json.JSONDecodeError:
+            return
+        token = (blob.get("claudeAiOauth") or {}).get("accessToken")
+        if token:
+            os.environ["ANTHROPIC_AUTH_TOKEN"] = token
+
+
     def _client(self):
         if self._sdk is not None:
             return self._sdk
@@ -160,19 +208,49 @@ class AnthropicClient:
         except ImportError as e:
             raise RuntimeError("anthropic SDK not installed; add it to pyproject.toml") from e
         self._load_env_from_claude_settings()
-        api_key = (
-            os.environ.get("ANTHROPIC_AUTH_TOKEN")
-            or os.environ.get("ANTHROPIC_API_KEY")
-            or ""
-        )
-        if not api_key:
+        # launchd-spawned processes inherit a partial environment from
+        # launchctl that includes ANTHROPIC_API_KEY="" (the Claude Code
+        # sandbox signal — empty string, not unset). The Anthropic SDK's
+        # constructor treats a present env var as authoritative even when
+        # it's empty, so it would happily send `x-api-key: ""` to
+        # api.anthropic.com — yielding 401 "invalid x-api-key" even
+        # though we've explicitly passed `auth_token=` for the OAuth
+        # bearer path. Strip empties here so the SDK falls back cleanly
+        # to whichever kwarg we actually pass.
+        for _k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+            if os.environ.get(_k, None) == "":
+                os.environ.pop(_k, None)
+        # Auth precedence:
+        #   ANTHROPIC_AUTH_TOKEN → SDK `auth_token=` → `Authorization: Bearer …`
+        #       (OAuth access tokens from Claude Code's Keychain, `sk-ant-oat-…`,
+        #       OpenRouter / vLLM proxies that expect a bearer)
+        #   ANTHROPIC_API_KEY    → SDK `api_key=`     → `x-api-key: …`
+        #       (classic Anthropic console keys, `sk-ant-api-…`)
+        # Mixing these up is exactly what made the keychain-hydrated OAuth
+        # token come back with 401 "invalid x-api-key" — the SDK was happily
+        # putting an OAuth bearer into the wrong header.
+        auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN") or ""
+        api_key    = os.environ.get("ANTHROPIC_API_KEY") or ""
+        if not auth_token and not api_key:
             raise RuntimeError(
                 "no API key — set ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY "
-                "(or populate the `env` block in ~/.claude/settings.json)"
+                "(or populate the `env` block in ~/.claude/settings.json, "
+                "or log into Claude Code so its Keychain entry is readable)"
             )
-        base_url = os.environ.get("ANTHROPIC_BASE_URL") or None
-        kwargs = {"api_key": api_key}
-        if base_url:
+        kwargs: dict = {}
+        if auth_token:
+            kwargs["auth_token"] = auth_token
+            # Required to unlock OAuth-bearer auth on /v1/messages.
+            # Without it, api.anthropic.com falls back to expecting
+            # x-api-key and returns 401 "invalid x-api-key" — exactly
+            # the symptom that exposed this whole bug. Empirically the
+            # only beta gate we need; safe to send unconditionally.
+            kwargs["default_headers"] = {
+                "anthropic-beta": "oauth-2025-04-20",
+            }
+        else:
+            kwargs["api_key"] = api_key
+        if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
             kwargs["base_url"] = base_url
         self._sdk = anthropic.Anthropic(**kwargs)
         return self._sdk

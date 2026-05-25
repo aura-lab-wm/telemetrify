@@ -19,7 +19,8 @@ class AnthropicBackend:
 
     # ── availability ─────────────────────────────────────────────────────
     def is_available(self) -> bool:
-        # Hydrate from settings.json if the shell env is empty.
+        # Hydrate from settings.json + macOS Keychain if the shell env is
+        # empty (launchd-spawned processes inherit a partial env).
         from ..client import AnthropicClient
         try:
             AnthropicClient._load_env_from_claude_settings()
@@ -41,19 +42,36 @@ class AnthropicBackend:
 
         from ..client import AnthropicClient
         AnthropicClient._load_env_from_claude_settings()
-        api_key = (
-            os.environ.get("ANTHROPIC_AUTH_TOKEN")
-            or os.environ.get("ANTHROPIC_API_KEY")
-            or ""
-        )
-        if not api_key:
+
+        # Strip empty-string env vars launchd inherits — see client.py
+        # for the full story. Without this, the SDK happily sends
+        # `x-api-key: ""` and 401s every call. This bit us twice because
+        # AnthropicBackend has its own SDK constructor (separate from
+        # AnthropicClient._client()) — both must do this dance.
+        for _k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+            if os.environ.get(_k, None) == "":
+                os.environ.pop(_k, None)
+
+        auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN") or ""
+        api_key    = os.environ.get("ANTHROPIC_API_KEY") or ""
+        if not auth_token and not api_key:
             raise RuntimeError(
                 "no API key — set ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY "
-                "(or populate the `env` block in ~/.claude/settings.json)"
+                "(or log into Claude Code so its Keychain entry is readable)"
             )
-        base_url = os.environ.get("ANTHROPIC_BASE_URL") or None
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if base_url:
+
+        kwargs: dict[str, Any] = {}
+        if auth_token:
+            # OAuth bearer path — Claude Code Keychain token, OpenRouter, vLLM.
+            # The `anthropic-beta: oauth-2025-04-20` header is required for
+            # api.anthropic.com to accept bearer auth on /v1/messages.
+            kwargs["auth_token"] = auth_token
+            kwargs["default_headers"] = {
+                "anthropic-beta": "oauth-2025-04-20",
+            }
+        else:
+            kwargs["api_key"] = api_key
+        if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
             kwargs["base_url"] = base_url
         self._sdk = anthropic.Anthropic(**kwargs)
         return self._sdk

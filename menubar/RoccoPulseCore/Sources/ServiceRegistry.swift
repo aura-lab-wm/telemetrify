@@ -39,14 +39,28 @@ public struct Service: Equatable, Identifiable, Sendable {
     /// from rocco-pulse's brand bolt so service rows don't compete with
     /// the menubar identity.
     public let iconSymbol: String
+    /// State-conditional buttons. The view picks the FIRST action whose
+    /// `showWhen` matches the live state — single button per row keeps
+    /// the popover scannable. Add an action here when a new recovery
+    /// path becomes available (e.g. `.restartVLLM`, `.killProcess`).
+    public let actions: [ServiceAction]
 
     public init(id: String, displayName: String, kind: Kind,
-                clientURL: URL? = nil, iconSymbol: String = "circle.dotted") {
+                clientURL: URL? = nil, iconSymbol: String = "circle.dotted",
+                actions: [ServiceAction] = []) {
         self.id = id
         self.displayName = displayName
         self.kind = kind
         self.clientURL = clientURL
         self.iconSymbol = iconSymbol
+        self.actions = actions
+    }
+
+    /// Returns the action whose predicate matches the given state.
+    /// Caller-side helper so the View doesn't have to know the matching
+    /// rule (currently first-match-wins, may grow priorities later).
+    public func action(for state: ServiceStatus.State) -> ServiceAction? {
+        actions.first { $0.applies(to: state) }
     }
 }
 
@@ -85,7 +99,16 @@ public struct ServiceRegistry: Sendable {
                 displayName: "telemetrify",
                 kind: .http(url: healthURL, summaryKey: "turns"),
                 clientURL: webURL,
-                iconSymbol: "bolt.horizontal.circle"
+                iconSymbol: "bolt.horizontal.circle",
+                actions: [
+                    // Open always — telemetrify either responds or it
+                    // doesn't; either way the URL is a valid recovery
+                    // path (browser will say "can't connect" if down,
+                    // which is itself actionable).
+                    ServiceAction(label: "Open",
+                                  showWhen: [.up, .down, .unknown],
+                                  command: .openURL(webURL)),
+                ]
             ))
         }
 
@@ -95,7 +118,17 @@ public struct ServiceRegistry: Sendable {
             kind: .sshSystemdUser(host: roccoHost,
                                   unit: "rocco-agent.service"),
             clientURL: nil,
-            iconSymbol: "server.rack"
+            iconSymbol: "server.rack",
+            actions: [
+                // Only offer Restart when the unit is actually .down —
+                // we don't want a tempting "Restart" button next to a
+                // healthy service that the operator could fat-finger.
+                ServiceAction(label: "Restart",
+                              showWhen: [.down],
+                              command: .sshRestartUnit(
+                                host: roccoHost,
+                                unit: "rocco-agent.service")),
+            ]
         ))
 
         out.append(Service(
@@ -104,7 +137,20 @@ public struct ServiceRegistry: Sendable {
             kind: .fromStatus(path: "vllm.running",
                               label: "Kimi-Dev-72B"),
             clientURL: nil,
-            iconSymbol: "cpu"
+            iconSymbol: "cpu",
+            actions: [
+                // Conditional pair: down → "Start", up → "Stop". The
+                // ServiceRow picks the first action whose showWhen
+                // matches the live state, so order matters only when
+                // both predicates could fire (they can't here — the
+                // states are disjoint).
+                ServiceAction(label: "Start",
+                              showWhen: [.down],
+                              command: .startVLLM),
+                ServiceAction(label: "Stop",
+                              showWhen: [.up],
+                              command: .stopVLLM),
+            ]
         ))
 
         return out

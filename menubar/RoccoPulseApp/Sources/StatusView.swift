@@ -10,7 +10,17 @@ struct StatusView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             Divider()
-            if let snapshot = store.snapshot {
+            // Diagnosis takes precedence over a stale cached snapshot when
+            // the most recent poll failed. Otherwise users who ever had a
+            // successful poll would see weeks-old GPU data and never the
+            // install hint, because loadCachedSnapshot keeps `snapshot`
+            // populated across launches. Always-fresh-snapshot wins; cached
+            // snapshot loses to an actionable failure.
+            let snapshotIsFresh: Bool = {
+                guard let snap = store.snapshot else { return false }
+                return !snap.isStale(now: Date())
+            }()
+            if let snapshot = store.snapshot, store.lastError == nil || snapshotIsFresh {
                 tierBadge(snapshot: snapshot)
                 vllmRow(snapshot: snapshot)
                 if snapshot.gpus.isEmpty {
@@ -20,12 +30,14 @@ struct StatusView: View {
                         gpuRow(gpu)
                     }
                 }
+                // Surface "we have data but the latest poll failed" as a
+                // small banner under the snapshot — never hide the failure.
+                if let err = store.lastError, !snapshotIsFresh {
+                    Divider()
+                    diagnosis(error: err, kind: store.lastErrorKind)
+                }
             } else if let error = store.lastError {
-                Text("Could not reach Rocco").bold()
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                diagnosis(error: error, kind: store.lastErrorKind)
             } else {
                 Text("Waiting for first poll…").foregroundStyle(.secondary)
             }
@@ -33,7 +45,7 @@ struct StatusView: View {
             footer
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: 380)
     }
 
     private var header: some View {
@@ -124,6 +136,97 @@ struct StatusView: View {
             await store.refresh()
         } catch {
             lifecycleNotice = error.localizedDescription
+        }
+    }
+
+    // MARK: - Failure diagnosis
+
+    /// Branches the empty-snapshot message on what specifically failed.
+    /// The biggest win is distinguishing `.agentFileMissing` (SSH is FINE,
+    /// the remote daemon just isn't installed) from `.sshFailed` (real
+    /// connectivity / auth problem). Previously both rendered as "Could
+    /// not reach Rocco" — actively misleading when SSH from Terminal works.
+    @ViewBuilder
+    private func diagnosis(error: String, kind: SSHProbeErrorKind?) -> some View {
+        switch kind {
+        case .agentFileMissing:
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                    Text("SSH OK").bold()
+                    Text("·").foregroundStyle(.secondary)
+                    Text("rocco-agent not installed")
+                        .foregroundStyle(.secondary)
+                }
+                Text("The remote daemon hasn't written `~/.cache/rocco-status.json` yet. Install it from your Mac with:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("bash menubar/rocco-agent/install.sh rocco")
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.gray.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                // Surface the captured remote stderr verbatim so the user
+                // can spot path / permission mismatches that install.sh
+                // wouldn't fix (XDG_CACHE_HOME redirect, wrong user, NFS
+                // handle, etc.). Don't make them guess.
+                Text(error)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+
+        case .sshFailed:
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+                    Text("SSH to rocco failed").bold()
+                }
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                Text("Try: `ssh rocco echo ok` in Terminal. If keys are locked, run `ssh-add`.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+        case .decodeFailed:
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Status file malformed").bold()
+                }
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                Text("Try restarting the agent: `ssh rocco systemctl --user restart rocco-agent`.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+        case .unknown, .none:
+            // Failure path we don't have a specific hint for — show the raw
+            // error and DO NOT pretend it's an SSH auth problem (the old
+            // "try ssh-add" hint actively misled people when the actual
+            // cause was e.g. a ProcessLauncher timeout or sandbox denial).
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "questionmark.diamond.fill")
+                        .foregroundStyle(.orange)
+                    Text("Poll failed").bold()
+                }
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
+            }
         }
     }
 }

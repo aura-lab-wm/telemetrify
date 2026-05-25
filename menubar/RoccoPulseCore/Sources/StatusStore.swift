@@ -23,6 +23,7 @@ public enum PollInterval: Int, CaseIterable, Identifiable, Sendable {
 public final class StatusStore: ObservableObject {
     @Published public private(set) var snapshot: RoccoStatus?
     @Published public private(set) var lastError: String?
+    @Published public private(set) var lastErrorKind: SSHProbeErrorKind?
     @Published public private(set) var lastFetchedAt: Date?
     @Published public var pollInterval: PollInterval = .normal {
         didSet { if oldValue != pollInterval { restartTimer() } }
@@ -67,9 +68,16 @@ public final class StatusStore: ObservableObject {
         case .success(let status):
             self.snapshot = status
             self.lastError = nil
+            self.lastErrorKind = nil
             persist(status: status)
         case .failure(let error):
             self.lastError = error.localizedDescription
+            // Only an SSHProbeError can claim a specific kind. Anything
+            // else (ProcessLauncher timeout / spawn failure / cancellation
+            // / sandbox denial) is .unknown — we must NOT label it as
+            // .sshFailed or the popover gives the wrong recovery hint
+            // ("try ssh-add" for problems that aren't SSH at all).
+            self.lastErrorKind = (error as? SSHProbeError)?.kind ?? .unknown
         }
     }
 

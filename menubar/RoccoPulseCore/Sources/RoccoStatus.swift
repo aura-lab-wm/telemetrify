@@ -133,15 +133,39 @@ public enum IconState: String, Equatable, Sendable {
     case fresh
     case stale
     case veryStale
-    case unreachable
+    case agentMissing   // SSH OK, but rocco-status.json missing → install hint
+    case unreachable    // SSH itself failed (network / auth / host key / …)
     case unknown
 
+    /// Legacy two-argument overload used before the probe started
+    /// classifying failures. Defaults `errorKind` to `nil` so a `lastError`
+    /// without a typed kind is still classified as `.unreachable` (the
+    /// previous behavior). New call-sites should pass `errorKind` so
+    /// "agent file missing" can be distinguished from "ssh down".
     public static func derive(snapshot: RoccoStatus?, lastError: String?, now: Date) -> IconState {
+        derive(snapshot: snapshot, lastError: lastError, now: now, errorKind: nil)
+    }
+
+    public static func derive(
+        snapshot: RoccoStatus?,
+        lastError: String?,
+        now: Date,
+        errorKind: SSHProbeErrorKind?
+    ) -> IconState {
         if let snapshot {
             let age = now.timeIntervalSince1970 - TimeInterval(snapshot.ts)
             if age <= 60 { return .fresh }
             if age <= 600 { return .stale }
             return .veryStale
+        }
+        // .agentMissing — the actionable yellow state. Both "agent file
+        // missing" AND "JSON malformed" surface here because the icon
+        // color must match the popover header color, and both popovers
+        // render in orange/yellow. A red `.unreachable` for decodeFailed
+        // would lie about the severity.
+        switch errorKind {
+        case .agentFileMissing, .decodeFailed: return .agentMissing
+        case .sshFailed, .unknown, .none:      break
         }
         if lastError != nil { return .unreachable }
         return .unknown

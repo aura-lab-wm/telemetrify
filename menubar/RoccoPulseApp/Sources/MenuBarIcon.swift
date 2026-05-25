@@ -6,11 +6,15 @@ import RoccoPulseCore
 /// by `IconState`. That keeps the menu-bar identity recognizable across
 /// states while still surfacing freshness / tier at a glance.
 ///
-///   .fresh        → full color, tier-tinted dot, animated
-///   .stale        → dimmed,     yellow dot
-///   .veryStale    → dimmed,     red dot
-///   .unreachable  → dimmed,     dot hidden ("no signal" cue)
-///   .unknown      → dimmed,     dot hidden
+///   .fresh         → full color, tier-tinted dot, animated
+///   .stale         → dimmed,     yellow dot, static
+///   .veryStale     → dimmed,     red dot, static
+///   .agentMissing  → dimmed,     ORANGE dot, ANIMATED — distinct from
+///                                .stale so the operator can tell at a
+///                                glance that the fix is "run install.sh"
+///                                vs "just wait for the next poll"
+///   .unreachable   → dimmed,     dot hidden ("no signal" cue)
+///   .unknown       → dimmed,     dot hidden
 struct MenuBarIcon: View {
     @ObservedObject var store: StatusStore
 
@@ -18,11 +22,15 @@ struct MenuBarIcon: View {
         let state = IconState.derive(
             snapshot: store.snapshot,
             lastError: store.lastError,
-            now: Date()
+            now: Date(),
+            errorKind: store.lastErrorKind
         )
         RoccoMark(
             pulseTint: dotColor(for: state),
-            pulseDotActive: state == .fresh,
+            pulseDotActive: state == .fresh || state == .agentMissing,
+            // .agentMissing keeps the dot visible (yellow) — SSH is fine,
+            // we want to nudge the user toward the install hint, not signal
+            // a full outage.
             pulseDotHidden: state == .unreachable || state == .unknown,
             dimmed: state != .fresh
         )
@@ -32,10 +40,13 @@ struct MenuBarIcon: View {
         switch state {
         case .fresh:
             return Color(nsColor: TierPalette.color(for: store.snapshot?.tier))
-        case .stale:       return Color(nsColor: .systemYellow)
-        case .veryStale:   return Color(nsColor: .systemRed)
-        case .unreachable: return Color(nsColor: .systemRed)
-        case .unknown:     return Color(nsColor: .systemGray)
+        case .stale:        return Color(nsColor: .systemYellow)
+        case .veryStale:    return Color(nsColor: .systemRed)
+        // Distinct from .stale (which is also yellow) — orange + animation
+        // makes "agent missing" actionable at a glance vs "just stale".
+        case .agentMissing: return Color(nsColor: .systemOrange)
+        case .unreachable:  return Color(nsColor: .systemRed)
+        case .unknown:      return Color(nsColor: .systemGray)
         }
     }
 }

@@ -81,8 +81,15 @@ class OpenAICompatBackend:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        # Cross-vendor model substitution: callers pass the PROMPT
+        # TEMPLATE's model id (e.g. "claude-haiku-4-5") which is
+        # Anthropic-vocabulary. An OpenAI-compat endpoint (Ollama,
+        # vLLM, etc.) doesn't know those names and returns 404.
+        # Always prefer this backend's own configured default_model
+        # when set — the template's model is a hint, not a directive.
+        effective_model = self.default_model or model
         body: dict[str, Any] = {
-            "model": model or self.default_model,
+            "model": effective_model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

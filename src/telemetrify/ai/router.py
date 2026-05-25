@@ -311,7 +311,13 @@ def default_router(conn: sqlite3.Connection,
 
     localmac_base = os.environ.get(
         "OLLAMA_LOCAL_BASE_URL", "http://localhost:11434/v1")
-    localmac_model = os.environ.get("OLLAMA_LOCAL_MODEL", "qwen2.5:3b-instruct")
+    # Default to gpt-oss:20b: it's the same model-family the Rocco hook
+    # already recommends, the user's likely-installed via the prompt
+    # workflow, and 20B parameters synthesizes decent /ask answers at
+    # ~25 tok/s on M-series Apple Silicon. Override via env when a
+    # smaller (qwen3:1.7b for speed) or larger (gemma3:12b for quality)
+    # model is preferred.
+    localmac_model = os.environ.get("OLLAMA_LOCAL_MODEL", "gpt-oss:20b")
 
     ollama_base = os.environ.get("OLLAMA_CLOUD_BASE_URL", "https://ollama.com/v1")
     ollama_key = os.environ.get("OLLAMA_CLOUD_API_KEY", "")

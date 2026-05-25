@@ -24,19 +24,33 @@ struct ServicesSection: View {
                 }
             }
 
-            // Cap the known list at ~6 rows tall and let it scroll past
-            // that. Prevents the popover from growing past the screen
-            // when a host like Rocco has many classified services.
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(spacing: 4) {
-                    ForEach(model.rows) { row in
-                        ServiceRowView(row: row) { action in
-                            Task { await model.perform(action: action, on: row.service) }
-                        }
+            // Known services render directly (no ScrollView) — there's
+            // only ever a handful: the three built-ins plus whatever
+            // ollama / jupyter the agent's classifier found. Wrapping
+            // these in a ScrollView made it collapse to 0 height
+            // because SwiftUI ScrollView is greedy and the parent
+            // VStack doesn't pin a minimum. The Unknown disclosure
+            // below DOES need scrolling because it can have dozens
+            // of rows.
+            VStack(spacing: 4) {
+                ForEach(model.rows) { row in
+                    ServiceRowView(row: row) { action in
+                        Task { await model.perform(action: action, on: row.service) }
                     }
                 }
+                // Empty-state hint while the first poll is still in
+                // flight — without it the user sees a SERVICES header
+                // with nothing under it and assumes the section is
+                // broken (which is exactly the bug they reported).
+                if model.rows.isEmpty {
+                    Text(model.isBusy
+                         ? "checking services…"
+                         : "no services yet")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 2)
+                }
             }
-            .frame(maxHeight: 180)
 
             // Unknown-ports disclosure — collapsed by default, expand to
             // see the dozens of random high-port listeners the agent
@@ -221,15 +235,28 @@ final class ServicesViewModel: ObservableObject {
     }
 
     func refresh(snapshot: RoccoStatus?) async {
+        isBusy = true
+        defer { isBusy = false }
         let result = ServiceRegistry(services: ServiceRegistry.builtins())
             .merging(discovered: snapshot?.services ?? [])
+        // Synthesize cheap rows IMMEDIATELY so the section shows
+        // something even before the SSH/HTTP probes complete (~5s
+        // worst-case). Then update each row's status as the probe
+        // finishes — but since SwiftUI redraws on every @Published
+        // mutation, batching at the end is cheaper. Compromise:
+        // publish a "checking…" pass first, then the real states.
+        rows = result.known.services.map {
+            Row(service: $0,
+                status: ServiceStatus(state: .unknown, summary: "checking…"))
+        }
+        unknownPorts = result.unknown
+
         var newRows: [Row] = []
         for svc in result.known.services {
             let status = await prober.probe(svc, snapshot: snapshot)
             newRows.append(Row(service: svc, status: status))
         }
         rows = newRows
-        unknownPorts = result.unknown
     }
 
     /// Run the chosen action and reflect the result as a transient toast.

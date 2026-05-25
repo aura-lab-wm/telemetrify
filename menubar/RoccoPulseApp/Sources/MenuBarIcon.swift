@@ -6,7 +6,9 @@ import RoccoPulseCore
 /// by `IconState`. That keeps the menu-bar identity recognizable across
 /// states while still surfacing freshness / tier at a glance.
 ///
-///   .fresh         → full color, tier-tinted dot, animated
+///   .fresh         → full color, tier-tinted dot OR bolt, animated
+///                    (bolt iff vLLM is up + state is .fresh — the
+///                    "inference rig hot" signal)
 ///   .stale         → dimmed,     yellow dot, static
 ///   .veryStale     → dimmed,     red dot, static
 ///   .agentMissing  → dimmed,     ORANGE dot, ANIMATED — distinct from
@@ -25,6 +27,7 @@ struct MenuBarIcon: View {
             now: Date(),
             errorKind: store.lastErrorKind
         )
+        let vllmUp = store.snapshot?.vllm.running == true
         RoccoMark(
             pulseTint: dotColor(for: state),
             pulseDotActive: state == .fresh || state == .agentMissing,
@@ -32,7 +35,11 @@ struct MenuBarIcon: View {
             // we want to nudge the user toward the install hint, not signal
             // a full outage.
             pulseDotHidden: state == .unreachable || state == .unknown,
-            dimmed: state != .fresh
+            dimmed: state != .fresh,
+            // Only show the bolt when EVERYTHING is healthy. A bolt over
+            // a stale/red snapshot would be misleading — the user might
+            // think vLLM is up when really we just can't reach Rocco.
+            vllmRunning: vllmUp && state == .fresh
         )
     }
 

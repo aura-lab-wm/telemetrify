@@ -16,15 +16,10 @@ import RoccoPulseCore
 /// Padding is tight on purpose — the popover is glance-fast, not a window.
 struct StatusView: View {
     @EnvironmentObject var store: StatusStore
-    @State private var isPerformingLifecycle = false
-    @State private var lifecycleNotice: LifecycleNotice?
-
-    /// Result of the last lifecycle action — kept in its own type so it can
-    /// carry severity (success vs failure) for styling.
-    struct LifecycleNotice: Equatable {
-        var text: String
-        var isError: Bool
-    }
+    // Lifecycle state (isPerformingLifecycle, lifecycleNotice,
+    // LifecycleNotice) was deleted in the de-dupe pass — the Services
+    // section now owns vLLM Start/Stop and has its own self-dismissing
+    // toast. One place to flash success/error; one mental model.
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -43,7 +38,10 @@ struct StatusView: View {
 
             if let snapshot = store.snapshot, store.lastError == nil || snapshotIsFresh {
                 tierBadge(snapshot: snapshot)
-                vllmRow(snapshot: snapshot)
+                // vLLM no longer rendered here — it lives in the Services
+                // section below as a single canonical row with its
+                // Start/Stop affordance. Showing it both places was
+                // strict duplication and the user called it out.
                 if snapshot.gpus.isEmpty {
                     Text("No GPUs visible")
                         .font(.caption)
@@ -73,10 +71,6 @@ struct StatusView: View {
             // Lifecycle banner: its OWN row, dismissable, NEVER overlaps the
             // footer (which is what the previous .overlay(alignment:.bottom)
             // approach did — the failure message bled into the buttons).
-            if let notice = lifecycleNotice {
-                lifecycleBanner(notice)
-            }
-
             Divider()
             footer
         }
@@ -130,61 +124,11 @@ struct StatusView: View {
         }
     }
 
-    private func vllmRow(snapshot: RoccoStatus) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: snapshot.vllm.running
-                  ? "checkmark.circle.fill" : "moon.zzz.fill")
-                .foregroundStyle(snapshot.vllm.running ? .green : .secondary)
-                .font(.callout)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(snapshot.vllm.running ? "vLLM up" : "vLLM offline")
-                    .font(.subheadline.bold())
-                if let model = snapshot.vllm.model {
-                    Text(model)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                } else if let configured = snapshot.vllm.configuredModel {
-                    // Be specific about what the Start button is about
-                    // to bring up — "will load Kimi-Dev-72B" beats the
-                    // anemic "port 8000 · idle".
-                    Text("will load \(configured)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                } else {
-                    Text("port \(snapshot.vllm.port) · idle")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            Spacer()
-            // Label the Start button with WHAT it'll start so the
-            // operator doesn't have to guess. "Start Kimi-Dev-72B"
-            // → clear. Bare "Start" → meaningless.
-            Button(buttonLabel(for: snapshot)) {
-                Task { await runLifecycle(start: !snapshot.vllm.running) }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(isPerformingLifecycle)
-        }
-    }
-
-    /// Specific label so "Start" is never ambiguous about what comes up.
-    /// Falls back to bare "Start" only when the agent doesn't know the
-    /// configured model id (older snapshot schema, missing manager).
-    private func buttonLabel(for snapshot: RoccoStatus) -> String {
-        if snapshot.vllm.running {
-            return snapshot.vllm.model.map { "Stop \($0)" } ?? "Stop"
-        }
-        if let configured = snapshot.vllm.configuredModel {
-            return "Start \(configured)"
-        }
-        return "Start"
-    }
+    // vllmRow / buttonLabel removed: vLLM now lives ONLY in the Services
+    // section at the bottom. The previous "show it twice" layout was
+    // strict duplication and the user called it out. `runLifecycle` is
+    // still imported by the Services prober via ServiceCommandRunner —
+    // those affordances flow through the registry now.
 
     // MARK: - GPU row
 
@@ -237,39 +181,6 @@ struct StatusView: View {
         .accessibilityValue("\(Int(max(0, min(value, 1)) * 100)) percent")
     }
 
-    // MARK: - Lifecycle banner
-
-    private func lifecycleBanner(_ notice: LifecycleNotice) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: notice.isError
-                  ? "exclamationmark.triangle.fill"
-                  : "checkmark.circle.fill")
-                .foregroundStyle(notice.isError ? .red : .green)
-                .font(.caption)
-                .padding(.top, 1)
-            Text(notice.text)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .lineLimit(3)
-            Spacer(minLength: 4)
-            Button {
-                lifecycleNotice = nil
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss notice")
-        }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill((notice.isError ? Color.red : Color.green).opacity(0.10))
-        )
-    }
-
     // MARK: - Footer
 
     private var footer: some View {
@@ -294,28 +205,6 @@ struct StatusView: View {
                 .controlSize(.small)
         }
         .font(.caption)
-    }
-
-    // MARK: - Lifecycle action
-
-    @MainActor
-    private func runLifecycle(start: Bool) async {
-        isPerformingLifecycle = true
-        defer { isPerformingLifecycle = false }
-        let commands = LifecycleCommands()
-        do {
-            try await Task.detached(priority: .utility) {
-                if start { try commands.startVLLM() } else { try commands.stopVLLM() }
-            }.value
-            lifecycleNotice = LifecycleNotice(
-                text: start ? "vLLM start requested." : "vLLM stop requested.",
-                isError: false)
-            await store.refresh()
-        } catch {
-            lifecycleNotice = LifecycleNotice(
-                text: error.localizedDescription,
-                isError: true)
-        }
     }
 
     // MARK: - Failure diagnosis

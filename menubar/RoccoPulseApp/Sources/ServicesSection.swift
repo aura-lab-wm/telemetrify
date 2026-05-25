@@ -125,21 +125,21 @@ private struct ServiceRowView: View {
     let onAction: (ServiceAction) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Circle()
                 .fill(stateColor)
-                .frame(width: 7, height: 7)
+                .frame(width: 8, height: 8)
             Image(systemName: row.service.iconSymbol)
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .frame(width: 16)
+                .frame(width: 18)
             Text(row.service.displayName)
-                .font(.caption.bold())
+                .font(.subheadline.bold())
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             if let summary = row.status.summary {
                 Text(summary)
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -148,10 +148,11 @@ private struct ServiceRowView: View {
             if let action = row.service.action(for: row.status.state) {
                 Button(action.label) { onAction(action) }
                     .buttonStyle(.bordered)
-                    .controlSize(.mini)
+                    .controlSize(.small)
                     .tint(buttonTint(for: action))
             }
         }
+        .padding(.vertical, 1)
         .help(row.status.error ?? row.service.displayName)
     }
 

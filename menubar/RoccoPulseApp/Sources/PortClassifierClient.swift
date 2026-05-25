@@ -21,12 +21,18 @@ public actor PortClassifierClient {
     public struct Response: Codable, Sendable {
         public let classifications: [Classification]
         public let backend: String?
+        /// Set when the LLM responded but its output didn't parse as JSON.
+        /// The endpoint still returns 200 in that case so the UI can
+        /// distinguish "AI gave up" from "telemetrify itself is down".
+        public let error: String?
+        public let raw_preview: String?
     }
 
     public enum ClassifyError: LocalizedError {
         case telemetrifyUnreachable(URL)
         case httpError(Int, String)
         case decodeFailed(Error)
+        case aiOutputUnparseable(String, rawPreview: String)
         public var errorDescription: String? {
             switch self {
             case .telemetrifyUnreachable(let u):
@@ -35,6 +41,8 @@ public actor PortClassifierClient {
                 return "HTTP \(code): \(body.prefix(200))"
             case .decodeFailed(let e):
                 return "decode failed: \(e)"
+            case .aiOutputUnparseable(let msg, _):
+                return "The local model gave up — \(msg). Try clicking Identify again, or check that Rocco vLLM is up."
             }
         }
     }
@@ -92,9 +100,19 @@ public actor PortClassifierClient {
         }
         do {
             let decoded = try JSONDecoder().decode(Response.self, from: data)
+            // Endpoint returns 200 with an `error` field when the AI
+            // couldn't produce parseable JSON. Surface it as a real
+            // error so the UI shows the friendly banner instead of
+            // silently rendering an empty classifications dict.
+            if decoded.classifications.isEmpty, let err = decoded.error {
+                throw ClassifyError.aiOutputUnparseable(err,
+                    rawPreview: decoded.raw_preview ?? "")
+            }
             var out: [Int: Classification] = [:]
             for c in decoded.classifications { out[c.port] = c }
             return out
+        } catch let e as ClassifyError {
+            throw e
         } catch {
             throw ClassifyError.decodeFailed(error)
         }

@@ -102,11 +102,23 @@ private struct UnknownPortsDisclosure: View {
                     Spacer()
                 }
                 if let err = classifyError {
-                    Text(err)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
-                        .textSelection(.enabled)
+                    // Soft warning, not a stack-trace. The raw upstream
+                    // error (HTTP 502 + Python dict-repr) was too scary.
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .textSelection(.enabled)
+                    }
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.orange.opacity(0.10))
+                    )
                 }
 
                 ScrollView(.vertical, showsIndicators: true) {
@@ -138,38 +150,38 @@ private struct UnknownPortsDisclosure: View {
     @ViewBuilder
     private func unknownRow(_ svc: RoccoStatus.Service) -> some View {
         let cls = classifications[svc.port]
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
             Circle().fill(cls != nil ? Color.accentColor : Color.secondary)
-                .frame(width: 5, height: 5)
+                .frame(width: 6, height: 6)
             Text("port \(String(svc.port))")
-                .font(.system(.caption2, design: .monospaced))
+                .font(.system(.footnote, design: .monospaced))
                 .foregroundStyle(.primary)
             if let cls {
                 // AI label takes precedence over the raw user/cmd
                 Text(cls.label)
-                    .font(.caption2.bold())
+                    .font(.footnote.bold())
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(cls.kind)
-                    .font(.system(.caption2, design: .monospaced))
+                    .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.tertiary)
                 ConfidenceChip(confidence: cls.confidence)
             } else {
                 if let u = svc.user, !u.isEmpty, u != "0" {
                     Text("· \(u)")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
                 if let cmd = svc.command, !cmd.isEmpty {
                     Text(cmd)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 } else if let probe = svc.probe, !probe.isEmpty {
                     Text(probe.replacingOccurrences(of: "\n", with: " · "))
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -177,6 +189,7 @@ private struct UnknownPortsDisclosure: View {
             }
             Spacer(minLength: 0)
         }
+        .padding(.vertical, 1)
         .help(cls?.reasoning ?? (svc.probe ?? ""))
     }
 
@@ -197,9 +210,9 @@ private struct ConfidenceChip: View {
     let confidence: String
     var body: some View {
         Text(confidence.lowercased())
-            .font(.system(size: 9, design: .monospaced))
+            .font(.system(size: 10, design: .monospaced))
             .foregroundStyle(color)
-            .padding(.horizontal, 4).padding(.vertical, 1)
+            .padding(.horizontal, 5).padding(.vertical, 1)
             .background(color.opacity(0.18))
             .clipShape(Capsule())
     }

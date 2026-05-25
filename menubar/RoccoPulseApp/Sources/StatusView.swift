@@ -147,38 +147,56 @@ struct StatusView: View {
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-            // Two-band track: util on top, memory below. The TRACK is always
-            // drawn so the lane is visible even when the bar would be 0%.
-            // Previously the rows looked empty at idle because ProgressView
-            // collapsed entirely.
-            VStack(spacing: 2) {
-                stackBar(value: Double(gpu.utilPct) / 100.0,
-                         tint: .blue,
-                         label: "util")
-                stackBar(value: gpu.memPctUsed / 100.0,
-                         tint: .purple,
-                         label: "mem")
-            }
+            // Unified usage bar: util on top half, mem on bottom half,
+            // ZERO gap between them so the two bands read as ONE
+            // continuous strip. Previous design had a 2pt gap that the
+            // user (rightly) called out as visual noise — at 4pt-each
+            // band heights the gap was as tall as the data itself.
+            UnifiedUsageBar(
+                utilPct: Double(gpu.utilPct) / 100.0,
+                memPct: gpu.memPctUsed / 100.0
+            )
         }
     }
 
-    /// A 4pt-tall capsule track with a tinted bar inside. Always visible
-    /// (track stays drawn at 0%), accessible (label fires VoiceOver), and
-    /// clamps to [0, 1] so a misbehaving agent emitting >100% can't break
-    /// the layout.
-    private func stackBar(value: Double, tint: Color, label: String) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule(style: .continuous)
-                    .fill(Color.primary.opacity(0.10))
-                Capsule(style: .continuous)
-                    .fill(tint)
-                    .frame(width: geo.size.width * max(0, min(value, 1)))
+    /// 8pt-tall capsule track split horizontally into two flush 4pt
+    /// bands — top = util (blue), bottom = mem (purple). One Shape,
+    /// one track, no inter-band whitespace. Clamps to [0,1].
+    private struct UnifiedUsageBar: View {
+        let utilPct: Double
+        let memPct: Double
+
+        var body: some View {
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = geo.size.height
+                let halfH = h / 2
+                let clampedUtil = max(0, min(utilPct, 1))
+                let clampedMem  = max(0, min(memPct, 1))
+                ZStack(alignment: .topLeading) {
+                    // single continuous track — capsule on the outside
+                    Capsule(style: .continuous)
+                        .fill(Color.primary.opacity(0.10))
+                    // top band — util fill (rectangle, no inner capsule
+                    // so it sits flush against the bottom band)
+                    Rectangle()
+                        .fill(Color.blue)
+                        .frame(width: w * clampedUtil, height: halfH)
+                        .position(x: w * clampedUtil / 2, y: halfH / 2)
+                    // bottom band — mem fill, flush against util above
+                    Rectangle()
+                        .fill(Color.purple)
+                        .frame(width: w * clampedMem, height: halfH)
+                        .position(x: w * clampedMem / 2, y: halfH + halfH / 2)
+                }
+                .clipShape(Capsule(style: .continuous))
             }
+            .frame(height: 8)
+            .accessibilityLabel("GPU usage")
+            .accessibilityValue(
+                "util \(Int(max(0, min(utilPct, 1)) * 100)) percent, " +
+                "memory \(Int(max(0, min(memPct, 1)) * 100)) percent")
         }
-        .frame(height: 4)
-        .accessibilityLabel(label)
-        .accessibilityValue("\(Int(max(0, min(value, 1)) * 100)) percent")
     }
 
     // MARK: - Footer

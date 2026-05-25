@@ -877,24 +877,86 @@ async def api_classify_ports(request: Request):
 
     from ..ai.client import AnthropicClient
     from ..ai import prompts as P
+    # Truthy schema (so OpenAICompatBackend enables JSON mode +
+    # guided-decoding on the wire) BUT with no `type` on the value —
+    # the in-house validate_schema() silently skips fields whose spec
+    # has no "type" key, so `classifications` (an array) passes
+    # through without the validator complaining "expected object".
+    # Without the type-less key, we'd hit either (a) JSON mode off
+    # → Kimi returns '---' free-form, or (b) JSON valid but our own
+    # validator rejects it because it doesn't know "array".
+    schema = {
+        "classifications": {},  # truthy → JSON mode; no type → no shape check
+    }
+
     conn = connect()
     client = AnthropicClient(conn)
-    try:
+
+    # Pin this feature to Anthropic-first: port classification is
+    # structured-JSON output, and Anthropic Haiku follows that
+    # instruction perfectly while Kimi-Dev-72B (Rocco's vLLM) tends
+    # to return free-form text like "---\n" no matter how strict the
+    # prompt is. Haiku at ~$0.001/call for a 25-port batch is cheap
+    # enough to skip the local tiers for this one feature. Local tiers
+    # remain the fallback if Anthropic is unreachable.
+    import os
+    _prev = os.environ.get("TELEMETRIFY_LLM_ORDER__classify_ports")
+    os.environ["TELEMETRIFY_LLM_ORDER__classify_ports"] = (
+        "anthropic,ollama,localmac,rocco"
+    )
+
+    def _do_call(extra_suffix: str = "") -> dict:
+        # `extra_suffix` is appended to user_kwargs on a retry to nudge
+        # a model that hallucinated bad JSON on the first pass.
+        kwargs = {"ports_block": "\n".join(bullets) + extra_suffix}
         result = client.call(
             feature="classify_ports",
             template=P.CLASSIFY_PORTS,
-            user_kwargs={"ports_block": "\n".join(bullets)},
-            schema={},   # free-form JSON; we parse and forward as-is
+            user_kwargs=kwargs,
+            schema=schema,
             max_tokens=900,
-            timeout=20.0,
+            timeout=25.0,
         )
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=502)
+        return {"raw": result.raw_text, "model": result.model}
 
-    # The router returns raw_text; extract_json then return verbatim.
+    out: dict = {}
+    parsed: dict = {}
+    last_err: str = ""
     try:
-        parsed = AnthropicClient._extract_json(result.raw_text)
-    except Exception:
-        parsed = {"classifications": [], "raw": result.raw_text}
-    parsed.setdefault("backend", "anthropic")
+        out = _do_call()
+        parsed = AnthropicClient._extract_json(out["raw"])
+    except Exception as first_err:
+        last_err = str(first_err)
+        # One retry with a stricter "JSON ONLY" suffix. Helps when a
+        # base model on a permissive backend ignored the system prompt.
+        try:
+            out = _do_call(
+                "\n\nIMPORTANT: Respond with JSON only. "
+                "First character of your output MUST be `{`. "
+                "Do not include any commentary, no '---', no markdown."
+            )
+            parsed = AnthropicClient._extract_json(out["raw"])
+        except Exception as second_err:
+            last_err = str(second_err) or last_err
+            # Final fallback: return an honest "couldn't parse" with
+            # the raw output for debugging. The Mac client renders
+            # this as a friendly toast instead of the scary HTTP 502.
+            preview = (out.get("raw", "") or last_err)[:200]
+            return JSONResponse(
+                {"classifications": [],
+                 "error": "AI returned non-JSON",
+                 "raw_preview": preview},
+                status_code=200,
+            )
+    # Restore the pre-call env override so other features keep their
+    # configured order (sloppy on shared os.environ, but acceptable for
+    # a single-process FastAPI server with a single Worker).
+    if _prev is None:
+        os.environ.pop("TELEMETRIFY_LLM_ORDER__classify_ports", None)
+    else:
+        os.environ["TELEMETRIFY_LLM_ORDER__classify_ports"] = _prev
+
+    parsed.setdefault("classifications", [])
+    parsed.setdefault("backend", "router")
+    parsed["model_used"] = out.get("model")
     return JSONResponse(parsed)

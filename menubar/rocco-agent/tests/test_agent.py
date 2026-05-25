@@ -394,3 +394,59 @@ def test_enrich_services_adds_v2_fields():
     assert enriched[0]["kind"] == "vllm"
     assert enriched[1]["kind"] == "ssh"
     assert enriched[2]["kind"] == "ollama"
+
+
+# ---------------------------------------------------------------------------
+# Manager tier — agent must defer to model_manager when present
+# (regression: menubar showed "Tier 4 · 4 GPUs free" while the prompt hook
+# reading the same manager said tier 0 / "No GPUs free")
+# ---------------------------------------------------------------------------
+
+def _manager_status_with_tier(*, vllm_running: bool, tier: int,
+                              free_gpus: list[int],
+                              description: str) -> str:
+    return json.dumps({
+        "manager_running": True,
+        "manager_pid": 1234,
+        "vllm_running": vllm_running,
+        "state": {
+            "tier": tier,
+            "free_gpus": free_gpus,
+            "all_gpus": [],
+            "vllm_running": vllm_running,
+            "vllm_port": 8000,
+            "model_id": "moonshotai/Kimi-Dev-72B",
+            "description": description,
+        },
+    })
+
+
+def test_probe_via_manager_surfaces_tier_and_free_gpus(tmp_path):
+    mod = _load_agent_module()
+    fake_python = tmp_path / "python"; fake_python.touch()
+    completed = MagicMock(returncode=0, stdout=_manager_status_with_tier(
+        vllm_running=False, tier=0, free_gpus=[],
+        description="No GPUs free — falling back to Anthropic API"),
+        stderr="")
+    with patch("subprocess.run", return_value=completed):
+        result = mod.probe_via_manager(project_root=tmp_path, python=fake_python)
+    assert result is not None
+    assert result["tier"] == 0
+    assert result["free_gpus"] == []
+    assert "No GPUs free" in result["tier_reason"]
+
+
+def test_probe_via_manager_omits_tier_when_state_missing(tmp_path):
+    """If the manager's status JSON ever changes shape and drops `tier`,
+    we must not crash — return None for tier so caller falls back to
+    compute_tier(). Defensive against upstream schema drift."""
+    mod = _load_agent_module()
+    fake_python = tmp_path / "python"; fake_python.touch()
+    payload = json.dumps({"manager_running": True, "state": {
+        "vllm_running": False, "vllm_port": 8000, "model_id": ""}})
+    completed = MagicMock(returncode=0, stdout=payload, stderr="")
+    with patch("subprocess.run", return_value=completed):
+        result = mod.probe_via_manager(project_root=tmp_path, python=fake_python)
+    assert result is not None
+    assert result["tier"] is None
+    assert result["free_gpus"] == []

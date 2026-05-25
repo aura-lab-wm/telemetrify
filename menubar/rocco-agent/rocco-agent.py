@@ -374,6 +374,15 @@ def probe_via_manager(
     full_id = state.get("model_id") or ""
     # "moonshotai/Kimi-Dev-72B" → "Kimi-Dev-72B" for compact display.
     short_model = full_id.rsplit("/", 1)[-1] if full_id else None
+    # `tier` from the manager is its authoritative readiness signal —
+    # accounts for in-use memory + reservations + the manager's own
+    # logic. Our local `compute_tier()` heuristic is naive (util<5%)
+    # and disagreed with the manager when other lab users had weights
+    # loaded but were CPU-idle for a moment — surfaced as "Tier 4 ·
+    # 4 GPUs free" in the menubar while the prompt-submit hook
+    # reading the SAME manager said tier 0 (no GPUs free). Surface
+    # the manager's number so both reads agree.
+    free_gpus = state.get("free_gpus") or []
     return {
         "running": running,
         "model": short_model if running else None,
@@ -383,6 +392,11 @@ def probe_via_manager(
         "configured_model": short_model,
         "port": state.get("vllm_port"),
         "description": state.get("description"),
+        # Authoritative tier — caller falls back to compute_tier()
+        # when these are None (i.e. manager not installed).
+        "tier": state.get("tier"),
+        "tier_reason": state.get("description"),
+        "free_gpus": free_gpus,
     }
 
 
@@ -538,7 +552,17 @@ def collect_snapshot() -> dict[str, Any]:
     if configured and not vllm_block["running"]:
         vllm_block["configured_model"] = configured
 
-    tier, tier_reason = compute_tier(gpus, vllm_block)
+    # Tier — prefer the on-host model_manager's authoritative value
+    # (same source the prompt-submit hook reads, so menubar & hook
+    # agree by construction). Fall back to our local naive heuristic
+    # only when the manager isn't installed.
+    mgr_tier = vllm_info.get("tier") if isinstance(vllm_info, dict) else None
+    mgr_reason = vllm_info.get("tier_reason") if isinstance(vllm_info, dict) else None
+    if isinstance(mgr_tier, int):
+        tier = mgr_tier
+        tier_reason = mgr_reason or compute_tier(gpus, vllm_block)[1]
+    else:
+        tier, tier_reason = compute_tier(gpus, vllm_block)
 
     now = int(time.time())
     snapshot = {

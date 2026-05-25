@@ -1,0 +1,8 @@
+# compiled toast binaries (reproduce with ./build.sh)
+distill-toast
+DistillToast.app/Contents/MacOS/DistillToast
+
+# runtime artifacts
+.disclosure-*
+*.lock
+.DS_Store

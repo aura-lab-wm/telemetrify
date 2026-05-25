@@ -191,7 +191,22 @@ def is_fresh(entry: dict[str, Any], ttl_s: int = DEFAULT_FRESHNESS_S) -> bool:
 def compute_one(conn, question: Question) -> dict[str, Any]:
     """Run a single question through the /api/ask SSE pipeline and
     collect the final answer + sources. Returns the entry shape that
-    load_cached() expects."""
+    load_cached() expects.
+
+    Pin both planner AND synthesizer to Haiku for this batch. Sonnet
+    is the default synth model and burns the shared OAuth bucket fast
+    — when Sonnet 429s, the router falls through to localmac
+    (Ollama on the Mac), which spins fans. Haiku is plenty for
+    reflection-style "summarize these 8 retrieved turns" prompts.
+    Saves the Mac AND keeps OAuth budget for /ask interactive use.
+    """
+    from .ai import prompts as P
+    saved_planner = P.QA_PLANNER.model
+    saved_synth = P.QA_SYNTHESIZER.model
+    # PromptTemplate is a frozen dataclass; mutate __dict__ directly.
+    object.__setattr__(P.QA_PLANNER,     "model", "claude-haiku-4-5-20251001")
+    object.__setattr__(P.QA_SYNTHESIZER, "model", "claude-haiku-4-5-20251001")
+
     from .ai.qa import stream_answer
 
     t0 = time.monotonic()
@@ -199,7 +214,13 @@ def compute_one(conn, question: Question) -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
     model_used = ""
     error: str | None = None
-    for evt in stream_answer(conn, question.prompt):
+    try:
+        events = list(stream_answer(conn, question.prompt))
+    finally:
+        object.__setattr__(P.QA_PLANNER,     "model", saved_planner)
+        object.__setattr__(P.QA_SYNTHESIZER, "model", saved_synth)
+
+    for evt in events:
         if evt["event"] == "sources":
             sources = evt["data"]
         elif evt["event"] == "delta":

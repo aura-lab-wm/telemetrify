@@ -9,6 +9,8 @@ data/*.log.*
 data/.migrations.lock
 data/.lock
 data/*.html
+data/insights.json
+data/insights.json.tmp
 
 # Python
 .venv/

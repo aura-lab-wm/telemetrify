@@ -37,7 +37,8 @@ struct ServicesSection: View {
                     ServiceRowView(
                         row: row,
                         inFlight: model.inFlight.contains(row.service.id),
-                        modelPicker: modelPicker(for: row.service)
+                        modelPicker: modelPicker(for: row.service),
+                        trainingHint: trainingHint(for: row.service)
                     ) { action in
                         Task { await model.perform(action: action, on: row.service) }
                     }
@@ -95,6 +96,15 @@ struct ServicesSection: View {
                 command: .selectModel(profile: profile))
             Task { await model.perform(action: action, on: service) }
         }
+    }
+
+    /// "capped by training" note for the vLLM row when Auto landed on a
+    /// smaller model because AURA Pulse sees a training job eating GPUs.
+    private func trainingHint(for service: Service) -> String? {
+        guard service.id == "vllm",
+              store.snapshot?.isAutoCappedByTraining == true
+        else { return nil }
+        return "capped by training"
     }
 }
 
@@ -263,6 +273,9 @@ private struct ServiceRowView: View {
     let row: ServicesViewModel.Row
     let inFlight: Bool
     var modelPicker: ModelPicker? = nil
+    /// vLLM-only: a short note (e.g. "capped by training") explaining why Auto
+    /// landed on a smaller model. nil hides it.
+    var trainingHint: String? = nil
     let onAction: (ServiceAction) -> Void
 
     var body: some View {
@@ -296,6 +309,13 @@ private struct ServiceRowView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+            }
+            if !inFlight, let hint = trainingHint {
+                Text("· \(hint)")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                    .help("AURA Pulse reports a training job is using GPUs, so Auto picked a smaller model.")
             }
             Spacer(minLength: 4)
             if !inFlight, let mp = modelPicker, !mp.available.isEmpty {

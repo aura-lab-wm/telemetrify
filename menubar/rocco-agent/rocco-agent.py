@@ -37,7 +37,7 @@ from typing import Any
 # Constants / config
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = 4  # v4: top-level models{} block (selected_profile + available[])
+SCHEMA_VERSION = 5  # v5: top-level training{} block (relayed from AURA Pulse)
 POLL_INTERVAL_S = 5.0
 VLLM_BASE_URL = os.environ.get("ROCCO_VLLM_BASE_URL", "http://localhost:8000")
 VLLM_PROBE_TIMEOUT_S = 1.0
@@ -442,6 +442,47 @@ def probe_vllm(base_url: str, timeout: float = VLLM_PROBE_TIMEOUT_S) -> dict[str
         return {"running": False, "model": None}
 
 
+AURA_EXPORT_URL = os.environ.get(
+    "ROCCO_AURA_EXPORT_URL", "http://127.0.0.1:8765/v1/export?days=1"
+)
+AURA_PROBE_TIMEOUT_S = 1.5
+
+
+def probe_training(url: str = AURA_EXPORT_URL,
+                   timeout: float = AURA_PROBE_TIMEOUT_S) -> dict[str, Any]:
+    """Relay AURA Pulse's `trainingRecorder` into a compact `training` block.
+
+    AURA Pulse (the root watcher-agent on :8765) is the source of truth for
+    training jobs — it records per-pid loss/throughput/py-spy. We don't
+    duplicate that; we just surface a one-line awareness signal so the menubar
+    can explain WHY Auto model-selection fell to a smaller tier.
+
+    Its recorder adopts *any* GPU compute process, including the vLLM workers
+    (`VLLM::Worker_TP*`), so those are filtered out — what remains is real
+    training. Never raises: if AURA is down we report available=False.
+    """
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        return {"source": "aura-pulse", "available": False,
+                "running": False, "jobs": []}
+    tr = data.get("trainingRecorder") or {}
+    jobs = []
+    for rec in tr.get("activeRecorders") or []:
+        cmd = rec.get("cmdline") or ""
+        if cmd.startswith("VLLM::"):
+            continue  # vLLM serving, not a training run
+        jobs.append({
+            "pid": rec.get("pid"),
+            "cmdline": cmd,
+            "owner": rec.get("owner"),
+            "started_at": rec.get("openedAt"),
+        })
+    return {"source": "aura-pulse", "available": True,
+            "running": bool(jobs), "jobs": jobs}
+
+
 def probe_via_manager(
     project_root: Path = MANAGER_ROOT,
     python: Path = MANAGER_PYTHON,
@@ -704,6 +745,7 @@ def collect_snapshot() -> dict[str, Any]:
         "gpus": gpus,
         "vllm": vllm_block,
         "models": models_block,
+        "training": probe_training(),
         "services": services,
         "tier": tier,
         "tier_reason": tier_reason,

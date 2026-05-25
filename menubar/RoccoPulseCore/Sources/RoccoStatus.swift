@@ -18,6 +18,9 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
     // Schema v4 — model selection: which profile is pinned and the pinnable
     // configs the picker renders. Optional so v1–v3 snapshots still decode.
     public let models: Models?
+    // Schema v5 — training awareness, relayed from AURA Pulse. Optional so
+    // v1–v4 snapshots still decode.
+    public let training: Training?
 
     public init(
         schemaVersion: Int,
@@ -31,7 +34,8 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         tierReason: String,
         inferenceRecent: InferenceRecent?,
         errors: [String],
-        models: Models? = nil
+        models: Models? = nil,
+        training: Training? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.host = host
@@ -45,6 +49,7 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         self.inferenceRecent = inferenceRecent
         self.errors = errors
         self.models = models
+        self.training = training
     }
 
     public struct GPU: Codable, Equatable, Sendable {
@@ -209,12 +214,71 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         }
     }
 
+    /// Schema v5 — training awareness relayed from AURA Pulse's
+    /// `trainingRecorder` (the vLLM workers it also adopts are filtered out
+    /// agent-side). AURA owns the rich view; this is a one-line signal.
+    public struct Training: Codable, Equatable, Sendable {
+        public let source: String?
+        public let available: Bool   // was AURA reachable?
+        public let running: Bool     // any real (non-vLLM) training job?
+        public let jobs: [Job]
+
+        public init(source: String?, available: Bool, running: Bool, jobs: [Job]) {
+            self.source = source
+            self.available = available
+            self.running = running
+            self.jobs = jobs
+        }
+
+        public struct Job: Codable, Equatable, Sendable, Identifiable {
+            public let pid: Int?
+            public let cmdline: String?
+            public let owner: String?
+            public let startedAt: Int?
+
+            public var id: Int { pid ?? 0 }
+
+            public init(pid: Int?, cmdline: String?, owner: String?, startedAt: Int?) {
+                self.pid = pid
+                self.cmdline = cmdline
+                self.owner = owner
+                self.startedAt = startedAt
+            }
+
+            enum CodingKeys: String, CodingKey {
+                case pid, cmdline, owner
+                case startedAt = "started_at"
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case source, available, running, jobs
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            source = try? c.decode(String.self, forKey: .source)
+            available = (try? c.decode(Bool.self, forKey: .available)) ?? false
+            running = (try? c.decode(Bool.self, forKey: .running)) ?? false
+            jobs = (try? c.decode([Job].self, forKey: .jobs)) ?? []
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
-        case host, ts, gpus, vllm, services, tier, errors, models
+        case host, ts, gpus, vllm, services, tier, errors, models, training
         case agentUptimeS = "agent_uptime_s"
         case tierReason = "tier_reason"
         case inferenceRecent = "inference_recent"
+    }
+
+    /// True when model selection is on Auto, a training job is running, and the
+    /// active tier is below the top — i.e. training is plausibly why Auto
+    /// didn't pick the biggest model. Drives the "capped by training" hint.
+    public var isAutoCappedByTraining: Bool {
+        guard let t = training, t.running else { return false }
+        guard models?.selectedProfile == nil else { return false }  // Auto only
+        return tier > 0 && tier < 4
     }
 
     // MARK: - Decoding helpers

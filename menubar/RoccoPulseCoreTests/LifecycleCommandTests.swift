@@ -21,7 +21,7 @@ final class LifecycleCommandTests: XCTestCase {
         XCTAssertEqual(launcher.capturedExecutable, "/usr/bin/ssh")
         XCTAssertEqual(launcher.capturedArguments, [
             "rocco",
-            "cd ~/rocco && python manager.py up",
+            "cd /scratch/amastropaolo/rocco-inference && /scratch/amastropaolo/rocco-inference/.venv/bin/python -m model_manager.manager up",
         ])
         XCTAssertEqual(delegate.lines, ["starting vllm", "port 8000 bound"])
     }
@@ -38,7 +38,7 @@ final class LifecycleCommandTests: XCTestCase {
         XCTAssertEqual(launcher.capturedExecutable, "/usr/bin/ssh")
         XCTAssertEqual(launcher.capturedArguments, [
             "rocco",
-            "cd ~/rocco && python manager.py down",
+            "cd /scratch/amastropaolo/rocco-inference && /scratch/amastropaolo/rocco-inference/.venv/bin/python -m model_manager.manager down",
         ])
         XCTAssertEqual(delegate.lines, ["stopping vllm", "bye"])
     }

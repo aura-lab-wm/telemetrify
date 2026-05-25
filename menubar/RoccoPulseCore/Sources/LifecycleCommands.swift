@@ -15,11 +15,22 @@ public protocol LifecycleOutputDelegate: AnyObject, Sendable {
     func lifecycle(_ commands: LifecycleCommands, didEmit line: String)
 }
 
-/// Up / down controls for the remote vLLM process. Both commands run a small
-/// Python manager script that lives in `~/rocco/manager.py` on the Rocco host
-/// and is the documented way for the operator to bring vLLM up or down (so
-/// the menubar shells out to the same entrypoint a human would type).
+/// Up / down controls for the remote vLLM process. Both commands invoke the
+/// `model_manager.manager` Python module that lives under
+/// `/scratch/amastropaolo/rocco-inference/` on the Rocco host. The module is
+/// the documented entrypoint a human would type, exposing `up`, `down`, and
+/// `status` subcommands; `up` daemonizes via a double-fork and returns
+/// immediately so the SSH command does not block on the poll loop.
 public final class LifecycleCommands: @unchecked Sendable {
+    /// Absolute path to the rocco-inference project root on the remote host.
+    /// Hardcoded by design (single user, single host); update here if the host
+    /// layout ever moves.
+    static let remoteProjectPath = "/scratch/amastropaolo/rocco-inference"
+    /// Absolute path to the project's venv Python on the remote host. The
+    /// remote login shell exposes only `/usr/bin/python3`, which lacks the
+    /// vLLM and gpu_monitor dependencies; the venv has them.
+    static let remoteVenvPython = "/scratch/amastropaolo/rocco-inference/.venv/bin/python"
+
     public weak var delegate: LifecycleOutputDelegate?
     private let launcher: ProcessLauncher
     private let timeout: TimeInterval
@@ -30,11 +41,11 @@ public final class LifecycleCommands: @unchecked Sendable {
     }
 
     public func startVLLM() throws {
-        try run(remoteCommand: "cd ~/rocco && python manager.py up")
+        try run(remoteCommand: "cd \(Self.remoteProjectPath) && \(Self.remoteVenvPython) -m model_manager.manager up")
     }
 
     public func stopVLLM() throws {
-        try run(remoteCommand: "cd ~/rocco && python manager.py down")
+        try run(remoteCommand: "cd \(Self.remoteProjectPath) && \(Self.remoteVenvPython) -m model_manager.manager down")
     }
 
     private func run(remoteCommand: String) throws {

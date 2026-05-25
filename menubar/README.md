@@ -77,8 +77,10 @@ no main window.
   `TierPalette`. v0 uses `waveform.path.ecg`; the icon contract is
   independent of the symbol so a custom asset can drop in later.
 * **`LifecycleCommands`** — `startVLLM()` / `stopVLLM()` shell out to
-  `ssh rocco "cd ~/rocco && python manager.py up|down"` and forward stdout
-  line-by-line to a delegate so the popover can show progress.
+  `ssh rocco "cd /scratch/amastropaolo/rocco-inference && .venv/bin/python -m model_manager.manager up|down"`
+  and forward stdout line-by-line to a delegate so the popover can show
+  progress. The remote `manager.py` daemonizes via a double-fork on `up`, so
+  the SSH call returns immediately rather than blocking on the poll loop.
 * **No `WindowGroup` in the App Scene** — only `MenuBarExtra`. This avoids
   the LSUIElement-vs-WindowGroup activation race aura-pulse hit, and keeps
   the dock icon out.

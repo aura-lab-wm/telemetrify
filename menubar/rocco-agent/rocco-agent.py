@@ -37,7 +37,7 @@ from typing import Any
 # Constants / config
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = 3  # v3: unknown services[] gain `probe` (HTTP banner)
+SCHEMA_VERSION = 4  # v4: top-level models{} block (selected_profile + available[])
 POLL_INTERVAL_S = 5.0
 VLLM_BASE_URL = os.environ.get("ROCCO_VLLM_BASE_URL", "http://localhost:8000")
 VLLM_PROBE_TIMEOUT_S = 1.0
@@ -501,6 +501,11 @@ def probe_via_manager(
         "tier": state.get("tier"),
         "tier_reason": state.get("description"),
         "free_gpus": free_gpus,
+        # Model selection (manager schema gained these): which profile is
+        # pinned ("auto" or 1..4) and the pinnable configs the menubar
+        # renders in its picker. Pass through verbatim.
+        "selected_profile": state.get("selected_profile"),
+        "available_models": state.get("available_models"),
     }
 
 
@@ -672,6 +677,16 @@ def collect_snapshot() -> dict[str, Any]:
     else:
         tier, tier_reason = compute_tier(gpus, vllm_block)
 
+    # Model-selection block (schema v4): the pinned profile + the pinnable
+    # configs the menubar's picker renders. Only present when the manager
+    # surfaced them; older managers / the curl fallback leave it empty.
+    models_block = {
+        "selected_profile": vllm_info.get("selected_profile")
+        if isinstance(vllm_info, dict) else None,
+        "available": (vllm_info.get("available_models") or [])
+        if isinstance(vllm_info, dict) else [],
+    }
+
     now = int(time.time())
     snapshot = {
         "schema_version": SCHEMA_VERSION,
@@ -680,6 +695,7 @@ def collect_snapshot() -> dict[str, Any]:
         "agent_uptime_s": int(time.time() - _AGENT_START_TS),
         "gpus": gpus,
         "vllm": vllm_block,
+        "models": models_block,
         "services": services,
         "tier": tier,
         "tier_reason": tier_reason,

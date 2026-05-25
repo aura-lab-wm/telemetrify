@@ -16,6 +16,9 @@ public enum ServiceCommand: Equatable, Sendable {
     case startVLLM
     /// Stop vLLM on Rocco.
     case stopVLLM
+    /// Pin a model profile (1...4) or `nil` for auto, then recycle vLLM so
+    /// the manager relaunches with the new selection.
+    case selectModel(profile: Int?)
 }
 
 /// A button bound to a ServiceCommand, shown only when the service's
@@ -99,6 +102,11 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
         case .stopVLLM:
             try lifecycle.stopVLLM()
             return "vLLM stop requested"
+
+        case .selectModel(let profile):
+            try lifecycle.selectModel(profile)
+            let name = profile.map { "profile \($0)" } ?? "Auto"
+            return "Model: \(name) — restarting vLLM"
         }
     }
 

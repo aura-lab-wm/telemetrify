@@ -36,7 +36,8 @@ struct ServicesSection: View {
                 ForEach(model.rows) { row in
                     ServiceRowView(
                         row: row,
-                        inFlight: model.inFlight.contains(row.service.id)
+                        inFlight: model.inFlight.contains(row.service.id),
+                        modelPicker: modelPicker(for: row.service)
                     ) { action in
                         Task { await model.perform(action: action, on: row.service) }
                     }
@@ -70,6 +71,29 @@ struct ServicesSection: View {
         .task(id: store.lastFetchedAt) {
             model.bind(store: store)   // so perform() can trigger refreshes
             await model.refresh(snapshot: store.snapshot)
+        }
+    }
+
+    /// Build the model picker for the vllm row from the latest snapshot's
+    /// `models` block. Returns nil for every other service (and when the
+    /// agent is pre-v4 / hasn't reported models yet), so the dropdown only
+    /// appears on the vllm row. Selecting fires a synthetic `.selectModel`
+    /// action through the same perform() path as Start/Stop so it gets the
+    /// in-flight overlay + staggered re-poll for free.
+    private func modelPicker(for service: Service) -> ServiceRowView.ModelPicker? {
+        guard service.id == "vllm",
+              let models = store.snapshot?.models,
+              !models.available.isEmpty
+        else { return nil }
+        return ServiceRowView.ModelPicker(
+            available: models.available,
+            selected: models.selectedProfile
+        ) { profile in
+            let action = ServiceAction(
+                label: "Model",
+                showWhen: [.up, .down, .unknown],
+                command: .selectModel(profile: profile))
+            Task { await model.perform(action: action, on: service) }
         }
     }
 }
@@ -227,8 +251,18 @@ private struct ConfidenceChip: View {
 }
 
 private struct ServiceRowView: View {
+    /// vLLM-only: the pinnable model configs + current selection, plus a
+    /// handler invoked when the operator picks one (nil = Auto). Rendered
+    /// as a dropdown in the row; nil for every non-vllm service.
+    struct ModelPicker {
+        let available: [RoccoStatus.Models.Available]
+        let selected: Int?            // nil = auto
+        let onSelect: (Int?) -> Void
+    }
+
     let row: ServicesViewModel.Row
     let inFlight: Bool
+    var modelPicker: ModelPicker? = nil
     let onAction: (ServiceAction) -> Void
 
     var body: some View {
@@ -264,6 +298,9 @@ private struct ServiceRowView: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: 4)
+            if !inFlight, let mp = modelPicker, !mp.available.isEmpty {
+                modelMenu(mp)
+            }
             if inFlight {
                 ProgressView().controlSize(.mini)
             } else if let action = row.service.action(for: row.status.state) {
@@ -275,6 +312,48 @@ private struct ServiceRowView: View {
         }
         .padding(.vertical, 1)
         .help(row.status.error ?? row.service.displayName)
+    }
+
+    /// Dropdown that lets the operator pin which model vLLM serves (or Auto).
+    /// Picking one writes the override on Rocco and recycles vLLM, so the
+    /// row goes in-flight for ~75s while the new weights load.
+    @ViewBuilder
+    private func modelMenu(_ mp: ModelPicker) -> some View {
+        Menu {
+            Button { mp.onSelect(nil) } label: {
+                Text((mp.selected == nil ? "✓ " : "   ") + "Auto (by free GPUs)")
+            }
+            Divider()
+            ForEach(mp.available) { m in
+                Button { mp.onSelect(m.profile) } label: {
+                    Text((mp.selected == m.profile ? "✓ " : "   ")
+                         + m.label
+                         + (m.downloaded ? "" : "  (not downloaded)"))
+                }
+                .disabled(!m.downloaded)
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "cpu")
+                Text(currentModelShortLabel(mp))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8))
+            }
+            .font(.caption)
+        }
+        .menuStyle(.borderlessButton)
+        .controlSize(.small)
+        .fixedSize()
+        .help("Choose which model vLLM serves on Rocco")
+    }
+
+    /// Short label for the menu's resting state: "Auto", or the precision +
+    /// model of the pinned config (e.g. "Qwen3-Coder-30B · BF16").
+    private func currentModelShortLabel(_ mp: ModelPicker) -> String {
+        guard let sel = mp.selected,
+              let m = mp.available.first(where: { $0.profile == sel })
+        else { return "Auto" }
+        return "\(m.model) · \(m.precision.uppercased())"
     }
 
     private var stateColor: Color {
@@ -291,7 +370,8 @@ private struct ServiceRowView: View {
         switch action.command {
         case .stopVLLM:                 return .secondary
         case .startVLLM,
-             .sshRestartUnit:           return .accentColor
+             .sshRestartUnit,
+             .selectModel:              return .accentColor
         case .openURL:                  return .primary
         }
     }
@@ -431,7 +511,7 @@ final class ServicesViewModel: ObservableObject {
         switch action.command {
         case .stopVLLM:                          return false
         case .startVLLM, .sshRestartUnit,
-             .openURL:                           return true
+             .openURL, .selectModel:             return true
         }
     }
 

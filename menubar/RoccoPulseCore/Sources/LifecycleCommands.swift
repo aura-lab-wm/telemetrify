@@ -79,6 +79,22 @@ public final class LifecycleCommands: @unchecked Sendable {
         }
     }
 
+    /// Pin a model profile (1...4) or `nil` for auto, then recycle the
+    /// manager so it relaunches vLLM with the new selection. `select`
+    /// only writes the override file; the `down ; up` is what actually
+    /// re-evaluates and (re)starts vLLM under the chosen config.
+    public func selectModel(_ profile: Int?) throws {
+        // `profile` is an Int or nil → "auto"; no untrusted text reaches
+        // the remote shell.
+        let target = profile.map(String.init) ?? "auto"
+        let cd = "cd \(Self.remoteProjectPath)"
+        let py = Self.remoteVenvPython
+        try run(remoteCommand:
+            "\(cd) && \(py) -m model_manager.manager select \(target) ; " +
+            "\(cd) && \(py) -m model_manager.manager down ; sleep 1 ; " +
+            "\(cd) && \(py) -m model_manager.manager up")
+    }
+
     private func forward(stdout: String) {
         guard let delegate else { return }
         for rawLine in stdout.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {

@@ -15,6 +15,9 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
     public let tierReason: String
     public let inferenceRecent: InferenceRecent?
     public let errors: [String]
+    // Schema v4 — model selection: which profile is pinned and the pinnable
+    // configs the picker renders. Optional so v1–v3 snapshots still decode.
+    public let models: Models?
 
     public init(
         schemaVersion: Int,
@@ -27,7 +30,8 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         tier: Int,
         tierReason: String,
         inferenceRecent: InferenceRecent?,
-        errors: [String]
+        errors: [String],
+        models: Models? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.host = host
@@ -40,6 +44,7 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         self.tierReason = tierReason
         self.inferenceRecent = inferenceRecent
         self.errors = errors
+        self.models = models
     }
 
     public struct GPU: Codable, Equatable, Sendable {
@@ -154,9 +159,59 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         }
     }
 
+    /// Schema v4 — model selection block from `rocco-agent`. `selectedProfile`
+    /// is the pinned profile 1...4, or `nil` for "auto" (the agent encodes auto
+    /// as the JSON string "auto", which we map to nil here).
+    public struct Models: Codable, Equatable, Sendable {
+        public let selectedProfile: Int?
+        public let available: [Available]
+
+        public init(selectedProfile: Int?, available: [Available]) {
+            self.selectedProfile = selectedProfile
+            self.available = available
+        }
+
+        public struct Available: Codable, Equatable, Sendable, Identifiable {
+            public let profile: Int
+            public let label: String
+            public let model: String
+            public let precision: String
+            public let gpus: Int
+            public let downloaded: Bool
+
+            public var id: Int { profile }
+
+            public init(profile: Int, label: String, model: String,
+                        precision: String, gpus: Int, downloaded: Bool) {
+                self.profile = profile
+                self.label = label
+                self.model = model
+                self.precision = precision
+                self.gpus = gpus
+                self.downloaded = downloaded
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case selectedProfile = "selected_profile"
+            case available
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            // `selected_profile` is either an int (1...4) or the string "auto".
+            if let i = try? c.decode(Int.self, forKey: .selectedProfile) {
+                selectedProfile = i
+            } else {
+                selectedProfile = nil   // "auto", null, or absent
+            }
+            available = (try? c.decode([Available].self, forKey: .available)) ?? []
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
-        case host, ts, gpus, vllm, services, tier, errors
+        case host, ts, gpus, vllm, services, tier, errors, models
         case agentUptimeS = "agent_uptime_s"
         case tierReason = "tier_reason"
         case inferenceRecent = "inference_recent"

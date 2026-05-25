@@ -1,3 +1,21 @@
+> ## ⚠️ DEPRECATED (2026-05-25) — folded into AURA Pulse
+>
+> The standalone **rocco-pulse** menu-bar app is retired. Its control surface —
+> vLLM **Start/Stop**, the **model picker**, and the GPU/tier display — now lives
+> in **AURA Pulse** (`~/Projects/aura-pulse`) as the **Controls** section
+> (admin-only; window + menubar deep-link). AURA reads everything from its own
+> `watcher-agent` `/v1/export` (`modelManager` block), so there's one source of
+> truth and one app.
+>
+> This source stays in git history; the app is no longer built or installed.
+> The separate Python **`rocco-agent`** (writes `~/.cache/rocco-status.json`)
+> is **NOT** retired — the Claude Code prompt-submit hook still reads it. Migrate
+> that hook to AURA's `/v1/export` before retiring `rocco-agent`.
+>
+> Below is the original rocco-pulse documentation, kept for reference.
+
+---
+
 # rocco-pulse — telemetrify's operational dashboard for its remote LLM backend
 
 This is **not a standalone tray app.** It's a subordinate of the parent

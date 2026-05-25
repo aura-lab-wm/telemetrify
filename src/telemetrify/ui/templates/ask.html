@@ -35,10 +35,48 @@
     </form>
 
     <div class="ask-suggestions" id="ask-suggestions">
-      <button type="button" class="pill ask-suggest" data-q="Show me where I struggled with FastAPI auth.">FastAPI auth struggles</button>
-      <button type="button" class="pill ask-suggest" data-q="What did I work on yesterday?">yesterday's work</button>
-      <button type="button" class="pill ask-suggest" data-q="Which prompts did I correct most?">most-corrected prompts</button>
-      <button type="button" class="pill ask-suggest" data-q="Summarize sessions about the dashboard redesign.">dashboard redesign summary</button>
+      <!--
+        Self-reflection prompt library. These aren't example queries —
+        they're carefully-worded questions the /ask planner can resolve
+        against the corpus's full structure (turns + followups +
+        clusters + annotations) to surface patterns about HOW the user
+        prompts, not just WHAT they asked about. The point is to turn
+        12,798 historical turns into a mirror.
+      -->
+
+      <div class="ask-suggest-group">
+        <span class="ask-suggest-title">friction</span>
+        <button type="button" class="pill ask-suggest" data-q="Find the 10 prompts I had to re-ask the most times in the same session before getting a useful answer, and group them by what topic they had in common.">prompts I re-asked most</button>
+        <button type="button" class="pill ask-suggest" data-q="Which of my sessions had the longest chain of follow-up corrections, and what was the root issue I was struggling to convey?">longest correction chains</button>
+        <button type="button" class="pill ask-suggest" data-q="Show me cases where I clearly didn't give Claude enough context up-front — find prompts where my next turn was 'no, what I meant was…' or similar.">underspecified prompts</button>
+      </div>
+
+      <div class="ask-suggest-group">
+        <span class="ask-suggest-title">weak prompts</span>
+        <button type="button" class="pill ask-suggest" data-q="Find my one-line vague prompts ('do it', 'fix this', 'now what') that triggered the longest assistant responses — those are signals that I made Claude guess and it tried to over-cover.">vague one-liners</button>
+        <button type="button" class="pill ask-suggest" data-q="Which prompts triggered tool errors that I then had to re-prompt to fix? Tell me the pattern — am I asking for the wrong tool, missing args, or assuming state that didn't exist?">prompts that caused tool errors</button>
+        <button type="button" class="pill ask-suggest" data-q="Show me prompts where the assistant asked me a clarifying question back — those are cases where I should have included the answer up-front. What do those questions have in common?">prompts that needed clarification</button>
+      </div>
+
+      <div class="ask-suggest-group">
+        <span class="ask-suggest-title">trends</span>
+        <button type="button" class="pill ask-suggest" data-q="What topics am I asking about most this week vs the previous four weeks? Where is my attention shifting?">topic drift over time</button>
+        <button type="button" class="pill ask-suggest" data-q="Which projects (by cwd) consume the most of my prompt time, and what kinds of tasks dominate each one?">projects by prompt-spend</button>
+        <button type="button" class="pill ask-suggest" data-q="What time of day do I prompt most, and is the quality (measured by no-follow-ups + no-tool-errors) different across morning / afternoon / late-night?">when am I sharpest</button>
+      </div>
+
+      <div class="ask-suggest-group">
+        <span class="ask-suggest-title">best moments</span>
+        <button type="button" class="pill ask-suggest" data-q="Find the 10 longest sessions that had ZERO follow-up corrections — what made those prompts work? Quote the opener verbatim.">my best prompts ever</button>
+        <button type="button" class="pill ask-suggest" data-q="Which prompts produced answers I annotated positively, and what stylistic patterns do those prompts share?">prompts that earned a good annotation</button>
+      </div>
+
+      <div class="ask-suggest-group">
+        <span class="ask-suggest-title">working memory</span>
+        <button type="button" class="pill ask-suggest" data-q="What did I work on yesterday? Group by project, list the open threads I might want to pick up.">yesterday's work</button>
+        <button type="button" class="pill ask-suggest" data-q="What was I in the middle of the last time I touched THIS project (look at my cwd)? Last 5 sessions in this dir, summarized.">resume current project</button>
+        <button type="button" class="pill ask-suggest" data-q="Which unfinished problems from the last two weeks did I never circle back to?">loose ends</button>
+      </div>
     </div>
   </header>
 

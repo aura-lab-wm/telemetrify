@@ -830,11 +830,26 @@ body.v-page .ask-bar-btn:active { transform: translateY(0.5px); }
 body.v-page .ask-bar-btn .icon { width: 14px; height: 14px; }
 
 body.v-page .ask-suggestions {
-  display: flex; flex-wrap: wrap; gap: 8px;
+  display: flex; flex-direction: column; gap: 10px;
+  margin-top: 4px;
+}
+body.v-page .ask-suggest-group {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+body.v-page .ask-suggest-title {
+  font-family: var(--vfont-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vorange);
+  padding: 2px 8px 2px 0;
+  white-space: nowrap;
+  min-width: 96px;
 }
 body.v-page .ask-suggest {
   cursor: pointer; font-family: var(--vfont-mono);
   background: transparent; border: 1px solid var(--vborder);
+  font-size: 11px;
 }
 body.v-page .ask-suggest:hover {
   color: var(--vorange); border-color: rgba(255, 92, 0, 0.35);

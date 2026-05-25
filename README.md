@@ -68,6 +68,55 @@ For every assistant turn, the Stop hook records:
 
 ---
 
+## How it works (end to end)
+
+Five stages — **capture → store → enrich → retrieve → serve** — plus the
+`rocco-pulse` companion for the `/ask` backend.
+
+1. **Capture — a Stop hook.** When a Claude Code turn finishes, the `Stop` hook
+   (`bin/capture-hook` → `python -m telemetrify.capture`) reads the hook JSON on
+   stdin, resolves the session's transcript `.jsonl`, and parses the *latest*
+   turn (`transcript.py`). Sub-agent turns are skipped and re-firing on an
+   already-recorded turn is a no-op (idempotent). Capture must never block the
+   user, so the embedding/grade steps are fail-silent and progress bars are
+   silenced — a closed hook pipe must never raise.
+
+2. **Store — local SQLite (WAL).** `store.py` upserts the session and inserts the
+   turn into `data/prompts.db` (all fields under *What it captures*; each tool
+   call is its own `tool_calls` row; the underlying transcript records are kept
+   as a lossless zstd archive). No network, no cloud.
+
+3. **Enrich — at capture time, best-effort.** Two MiniLM 384-dim embeddings
+   (prompt+response and prompt-only) → sqlite-vec; nearest **HDBSCAN** cluster
+   assignment; within-session **follow-up** detection; an inline
+   **LLM-as-judge** grade. All wrapped fail-silent so they can't break capture.
+
+4. **Retrieve — hybrid search.** `search.py` runs **FTS5 BM25** (keyword) and
+   **sqlite-vec cosine** (semantic) in parallel and fuses them with **Reciprocal
+   Rank Fusion** (`RRF_K = 60`). `parse_filters` compiles URL params into a
+   whitelisted SQL `WHERE` — `model`, `cwd_glob`, `since`/`until`, `has_error`,
+   `has_annotation`, `tag`, … The **`tag`** filter does a whole-element CSV match
+   against `annotations.tags`, so a curated collection of turns gets its own
+   one-click view in the UI.
+
+5. **Serve — FastAPI on `:8767`.** `ui/app.py` serves search/recent, per-turn
+   replay, the faceted filter bar, annotation editing, cluster pages, and
+   **replay-and-diff** — `rerun.py` re-runs a past prompt against the current
+   `claude` CLI in a fresh sandbox under `data/reruns/` and diffs the output.
+
+**Companion — rocco-pulse.** A `UserPromptSubmit` hook prints the live inference
+tier banner, and `/ask` routes QA through a 4-tier stack (remote Rocco vLLM →
+Mac Ollama → Ollama Cloud → Anthropic). The `rocco-pulse` menubar app + on-box
+daemon report which model/tier is live so the hook and `/ask` never disagree
+(see *Project shape* above; skip it entirely if you only use an
+`ANTHROPIC_API_KEY`).
+
+**Curation flow.** Capture everything → tag the turns you care about
+(`annotations.tags`, set in the UI or via the API) → filter the UI with
+`?tag=<name>` for a clean, replayable collection.
+
+---
+
 ## Architecture
 
 ```

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Pre-compute the curated self-reflection insights and persist to
+# data/insights.json. Schedule nightly (see deploy/) so the /insights
+# page renders instantly instead of waiting ~15s × 13 questions per
+# cold load.
+#
+# Usage:
+#   bin/insights              # compute stale entries only (≤23h skipped)
+#   bin/insights --force      # re-run everything
+set -eu
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m telemetrify.insights_cli "$@"

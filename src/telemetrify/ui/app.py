@@ -603,7 +603,50 @@ def classifier_status():
 # ─── Ask-the-Ledger (Round B1) ─────────────────────────────────────────
 @app.get("/ask", response_class=HTMLResponse)
 def ask_page(request: Request):
-    return _render("ask.html", {"q": ""})
+    from ..insights import questions_for_chips, categories
+    return _render("ask.html", {
+        "q": "",
+        "request": request,
+        "ask_categories": categories(),
+        "ask_questions": questions_for_chips(),
+    })
+
+
+@app.get("/insights", response_class=HTMLResponse)
+def insights_page(request: Request):
+    """Glance-fast view of the pre-computed self-reflection answers.
+    Runs zero LLM calls on render — reads data/insights.json. Stale
+    cache → the page still renders, with a 'compute now' affordance."""
+    from ..insights import load_cached, categories, CURATED_QUESTIONS
+    cached = load_cached()
+    return _render("insights.html", {
+        "q": "",
+        "request": request,
+        "categories": categories(),
+        "questions": [q.__dict__ for q in CURATED_QUESTIONS],
+        "computed_at": cached.get("computed_at", 0),
+        "entries": cached.get("entries") or {},
+    })
+
+
+@app.post("/api/insights/recompute")
+async def api_insights_recompute(background: BackgroundTasks,
+                                  force: bool = False):
+    """Kick the compute in the background so the click is instant.
+    The /insights page polls the cache file's mtime to know when
+    it's done."""
+    from ..insights import compute_all
+
+    def _run():
+        conn = connect()
+        try:
+            compute_all(conn, force_refresh=force, progress=lambda *_: None)
+        except Exception as e:  # noqa: BLE001
+            import sys as _s; print(f"[insights] background failed: {e}",
+                                      file=_s.stderr)
+
+    background.add_task(_run)
+    return JSONResponse({"status": "computing"})
 
 
 @app.post("/api/ask")

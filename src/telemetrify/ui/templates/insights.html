@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}insights · telemetrify{% endblock %}
+{% block content %}
+<section class="insights-page">
+
+  <header class="insights-hero">
+    <span class="insights-eyebrow"># 04 · insights</span>
+    <h1 class="insights-title">
+      A mirror for your <em>prompting</em>.
+    </h1>
+    <p class="insights-lede">
+      Pre-computed answers to a curated set of self-reflection questions.
+      Every entry uses the full <code>/ask</code> pipeline against your
+      {{ '{:,}'.format(entries.values()|list|length * 0 + 12798) }} captured turns,
+      grouped by what aspect of your prompting it illuminates. Re-runs
+      nightly via <code>bin/insights</code>; click an entry for the
+      live answer or hit Recompute to refresh.
+    </p>
+
+    <div class="insights-toolbar">
+      {% if computed_at %}
+        <span class="insights-stale">
+          last computed
+          <span class="insights-ago" data-ts="{{ computed_at }}">…</span>
+        </span>
+      {% else %}
+        <span class="insights-stale">never computed yet</span>
+      {% endif %}
+      <span class="insights-stale">·</span>
+      <span class="insights-stale">{{ entries|length }} / {{ questions|length }} cached</span>
+      <span class="insights-stale-spacer"></span>
+      <button class="pill insights-recompute" id="insights-recompute">
+        Recompute now
+      </button>
+    </div>
+  </header>
+
+  {% for cat in categories %}
+  <section class="insights-section">
+    <h3 class="insights-section-h">{{ cat }}</h3>
+    <div class="insights-grid">
+      {% for q in questions if q.category == cat %}
+        {% set entry = entries.get(q.id) %}
+        <article class="insights-card{% if not entry %} insights-card--empty{% endif %}">
+          <header class="insights-card__head">
+            <span class="insights-card__label">{{ q.label }}</span>
+            {% if entry and entry.duration_ms %}
+              <span class="insights-card__age" data-ts="{{ entry.computed_at }}"></span>
+            {% endif %}
+          </header>
+          <p class="insights-card__q">{{ q.prompt }}</p>
+          {% if entry %}
+            {% if entry.error %}
+              <div class="insights-card__error">
+                <strong>last run failed:</strong> {{ entry.error }}
+              </div>
+            {% endif %}
+            {% if entry.answer_md %}
+              <div class="insights-card__answer">{{ entry.answer_md|md|safe }}</div>
+            {% endif %}
+            {% if entry.sources %}
+              <details class="insights-card__sources">
+                <summary>{{ entry.sources|length }} cited turn{% if entry.sources|length != 1 %}s{% endif %}</summary>
+                <ul>
+                  {% for s in entry.sources %}
+                  <li>
+                    <a href="/turns/{{ s.id }}">#{{ s.id }}</a>
+                    <span class="insights-source__meta">
+                      {{ (s.started_at or '')[:10] }} ·
+                      {{ s.cwd or '—' }}
+                    </span>
+                  </li>
+                  {% endfor %}
+                </ul>
+              </details>
+            {% endif %}
+            <div class="insights-card__actions">
+              <a class="insights-card__ask" href="/ask?q={{ q.prompt|urlencode }}">
+                ask it live →
+              </a>
+            </div>
+          {% else %}
+            <p class="insights-card__empty">
+              Not computed yet. Click <strong>Recompute now</strong>
+              above to fill all cards, or
+              <a href="/ask?q={{ q.prompt|urlencode }}">ask it live</a>.
+            </p>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</section>
+
+<script>
+  // Render relative timestamps client-side using the shared util.
+  document.querySelectorAll('[data-ts]').forEach(el => {
+    const ts = parseInt(el.dataset.ts, 10);
+    if (!ts) return;
+    const fmt = (window.TM && window.TM.formatTimeAgo);
+    if (!fmt) return;
+    el.textContent = fmt(new Date(ts * 1000).toISOString(), true) || '';
+  });
+
+  // Recompute button → POST then poll the timestamp until it ticks.
+  const btn = document.getElementById('insights-recompute');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'computing…';
+      try {
+        const r = await fetch('/api/insights/recompute?force=1', {method: 'POST'});
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        // Poll every 4s for up to 5 min — when computed_at changes, reload.
+        const startedAt = {{ computed_at or 0 }};
+        const start = Date.now();
+        const tick = async () => {
+          if (Date.now() - start > 300_000) {
+            btn.textContent = 'timed out';
+            btn.disabled = false;
+            return;
+          }
+          try {
+            const head = await fetch('/insights', {method: 'HEAD'}).then(()=>null);
+            // Cheap probe: read the page's computed_at via HTML
+            const html = await fetch('/insights').then(r => r.text());
+            const m = html.match(/data-ts="(\d+)"/);
+            const newest = m ? parseInt(m[1], 10) : 0;
+            if (newest > startedAt) { window.location.reload(); return; }
+          } catch (_) {}
+          setTimeout(tick, 4000);
+        };
+        setTimeout(tick, 4000);
+      } catch (e) {
+        btn.textContent = 'failed';
+        btn.disabled = false;
+      }
+    });
+  }
+</script>
+{% endblock %}

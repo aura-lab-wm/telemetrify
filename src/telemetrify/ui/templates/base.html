@@ -40,9 +40,13 @@
         <svg class="icon" aria-hidden="true"><use href="#i-clusters"/></svg>
         <span>Clusters</span>
       </a>
-      <a href="/ask" {% if request and '/ask' in request.url.path %}class="active"{% endif %}>
+      <a href="/ask" {% if request and request.url.path == '/ask' %}class="active"{% endif %}>
         <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
         <span>Ask</span>
+      </a>
+      <a href="/insights" {% if request and '/insights' in request.url.path %}class="active"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-clusters"/></svg>
+        <span>Insights</span>
       </a>
       <a href="/queue" {% if request and '/queue' in request.url.path %}class="active"{% endif %}>
         <svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>

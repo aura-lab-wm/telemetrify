@@ -72,6 +72,29 @@ final class ParserTests: XCTestCase {
         // No crash, no division-by-zero — just empty.
     }
 
+    /// Regression test for the real-world shape the rocco-agent emits when
+    /// vLLM isn't running: `vllm.uptime_s: null` AND `services[].pid: null`.
+    /// Before this fix the decode threw, surfacing as `.decodeFailed` and
+    /// the misleading "Status file malformed" popover, even though the
+    /// agent was working perfectly.
+    func testDecodesAgentNullsFixture() throws {
+        let data = try loadFixture("status-vllm-not-running")
+        let status = try RoccoStatus.decode(from: data)
+
+        XCTAssertEqual(status.vllm.running, false)
+        XCTAssertNil(status.vllm.uptimeS,
+            "vllm.uptime_s null must decode to nil, not throw")
+        XCTAssertEqual(status.vllm.port, 8000,
+            "vllm.port stays Int — it's the configured port even when vLLM is down")
+        XCTAssertEqual(status.services.count, 2)
+        for svc in status.services {
+            XCTAssertNil(svc.pid,
+                "services[].pid null (ss can't determine owner) must decode to nil")
+        }
+        XCTAssertEqual(status.gpus.count, 4)
+        XCTAssertEqual(status.tier, 4)
+    }
+
     func testIsStaleAtThresholds() throws {
         let data = try loadFixture("status-healthy")
         let status = try RoccoStatus.decode(from: data)

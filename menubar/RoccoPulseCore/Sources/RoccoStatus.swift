@@ -70,11 +70,18 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
     public struct VLLM: Codable, Equatable, Sendable {
         public let running: Bool
         public let model: String?
+        // `port` is what the agent expects vLLM to listen on; it knows the
+        // configured port regardless of whether vLLM is currently up.
         public let port: Int
         public let pid: Int?
-        public let uptimeS: Int
+        // Optional: when vLLM isn't running the agent emits `uptime_s: null`
+        // because there's no process whose uptime to measure. Was previously
+        // declared non-optional which caused every real snapshot from the
+        // remote to fail Codable with a DecodingError, surfacing as
+        // `.decodeFailed` and the misleading "Status file malformed" popover.
+        public let uptimeS: Int?
 
-        public init(running: Bool, model: String?, port: Int, pid: Int?, uptimeS: Int) {
+        public init(running: Bool, model: String?, port: Int, pid: Int?, uptimeS: Int?) {
             self.running = running
             self.model = model
             self.port = port
@@ -91,7 +98,12 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
     public struct Service: Codable, Equatable, Sendable {
         public let port: Int
         public let proc: String
-        public let pid: Int
+        // Optional: `ss -tlnH` can't always determine the owning PID (e.g.
+        // ports owned by another user, kernel pseudo-services, processes
+        // whose /proc entry is unreadable) — the agent emits `null` for
+        // those. Was previously non-optional which made any real-world
+        // snapshot fail Codable.
+        public let pid: Int?
     }
 
     public struct InferenceRecent: Codable, Equatable, Sendable {

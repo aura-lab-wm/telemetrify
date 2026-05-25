@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "host": "ams1",
+  "ts": 1779669335,
+  "agent_uptime_s": 101,
+  "gpus": [
+    {"idx": 0, "name": "NVIDIA L40S", "util_pct": 0, "mem_used_mib": 0, "mem_total_mib": 46068, "temp_c": 35, "power_w": 26.52},
+    {"idx": 1, "name": "NVIDIA L40S", "util_pct": 0, "mem_used_mib": 0, "mem_total_mib": 46068, "temp_c": 35, "power_w": 24.67},
+    {"idx": 2, "name": "NVIDIA L40S", "util_pct": 0, "mem_used_mib": 0, "mem_total_mib": 46068, "temp_c": 31, "power_w": 25.45},
+    {"idx": 3, "name": "NVIDIA L40S", "util_pct": 0, "mem_used_mib": 0, "mem_total_mib": 46068, "temp_c": 30, "power_w": 25.31}
+  ],
+  "vllm": {"running": false, "model": null, "port": 8000, "pid": null, "uptime_s": null},
+  "services": [
+    {"port": 8765, "proc": "", "pid": null},
+    {"port": 22,   "proc": "", "pid": null}
+  ],
+  "tier": 4,
+  "tier_reason": "4 GPUs free",
+  "inference_recent": null,
+  "errors": []
+}

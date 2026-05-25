@@ -219,7 +219,7 @@ def test_collect_snapshot_returns_full_schema(agent, nvidia_csv, ss_output):
         "errors",
     }
     assert set(snap.keys()) == expected_top
-    assert snap["schema_version"] == 1
+    assert snap["schema_version"] == 2
     assert snap["host"] == "rocco.cs.wm.edu"
     assert snap["ts"] == 1737759600
 
@@ -328,3 +328,69 @@ def test_probe_via_manager_returns_none_on_nonzero_exit(tmp_path):
     with patch("subprocess.run", return_value=completed):
         result = mod.probe_via_manager(project_root=tmp_path, python=fake_python)
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Service classifier + enrichment (schema v2)
+# ---------------------------------------------------------------------------
+
+def test_classify_service_known_patterns():
+    mod = _load_agent_module()
+    cases = [
+        # (port, proc, command, expected_kind)
+        (8000, "vllm",   "vllm serve …",                                 "vllm"),
+        (8000, "python", "python -m vllm.entrypoints.openai.api_server", "vllm"),
+        (11434, "ollama", "ollama serve",                                "ollama"),
+        (8888, "jupyter","jupyter-lab",                                  "jupyter"),
+        (8889, "python", "python -m jupyterlab",                         "jupyter"),
+        (8767, "python", "uvicorn telemetrify.ui.app:app",               "telemetrify"),
+        (8765, "python", "uvicorn anything",                             "telemetrify"),
+        (22,   "sshd",   "sshd: amastropaolo",                           "ssh"),
+        (9100, "node_exporter", "node_exporter",                         "prometheus"),
+        (53,   "systemd-resolve", "/lib/systemd/systemd-resolved",       "dns-stub"),
+        (111,  "rpcbind", "/sbin/rpcbind",                               "nfs-portmap"),
+        (37291,"random",  "some random thing",                           "unknown"),
+    ]
+    for port, proc, cmd, expected in cases:
+        got = mod.classify_service(port, proc, cmd)
+        assert got == expected, f"port={port} proc={proc!r} cmd={cmd!r}: expected {expected}, got {got}"
+
+
+def test_classify_service_safe_on_matcher_exception():
+    """A misbehaving matcher must NOT crash the daemon. Verify by hot-injecting
+    a matcher that throws."""
+    mod = _load_agent_module()
+    original = mod._SERVICE_CLASSIFIERS[:]
+    try:
+        mod._SERVICE_CLASSIFIERS.insert(
+            0, (lambda port, proc, cmd: 1 / 0, "boom"))
+        # should fall through to a real match, not raise
+        got = mod.classify_service(22, "sshd", "sshd")
+        assert got == "ssh"
+    finally:
+        mod._SERVICE_CLASSIFIERS[:] = original
+
+
+def test_lookup_proc_owner_handles_missing_proc():
+    """Non-existent PID must return empty strings, not raise."""
+    mod = _load_agent_module()
+    owner = mod.lookup_proc_owner(99999999)
+    assert owner == {"command": "", "user": ""}
+
+
+def test_enrich_services_adds_v2_fields():
+    """enrich_services() must add kind/command/user to every row, even when
+    /proc lookup fails (PID not present on this Mac during the test)."""
+    mod = _load_agent_module()
+    rows = [
+        {"port": 8000, "proc": "vllm", "pid": 99999999},
+        {"port": 22,   "proc": "sshd", "pid": None},
+        {"port": 11434,"proc": "ollama", "pid": 99999998},
+    ]
+    enriched = mod.enrich_services(rows)
+    assert len(enriched) == 3
+    for r in enriched:
+        assert "kind" in r and "command" in r and "user" in r
+    assert enriched[0]["kind"] == "vllm"
+    assert enriched[1]["kind"] == "ssh"
+    assert enriched[2]["kind"] == "ollama"

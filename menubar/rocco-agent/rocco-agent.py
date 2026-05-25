@@ -37,7 +37,7 @@ from typing import Any
 # Constants / config
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # v2: services[] gain `kind`, `command`, `user` fields
 POLL_INTERVAL_S = 5.0
 VLLM_BASE_URL = os.environ.get("ROCCO_VLLM_BASE_URL", "http://localhost:8000")
 VLLM_PROBE_TIMEOUT_S = 1.0
@@ -172,6 +172,124 @@ def parse_ss_tlnH(text: str) -> list[dict[str, Any]]:
             {"port": port, "proc": proc, "pid": pid},
         )
     return list(services.values())
+
+
+# ---------------------------------------------------------------------------
+# Service classification + enrichment (schema v2)
+# ---------------------------------------------------------------------------
+#
+# Each classifier is (matcher, kind). Matcher receives (port, proc, command)
+# and returns True if this service fits the kind. First match wins, so order
+# matters — list more specific patterns before broad ones.
+#
+# `kind` values the Mac client knows how to render:
+#   vllm           — OpenAI-compatible inference server (port 8000-8099)
+#   ollama         — Ollama daemon (default port 11434)
+#   jupyter        — Jupyter Lab / Notebook
+#   telemetrify    — telemetrify FastAPI UI (port 8765-8767 by convention)
+#   ssh            — sshd
+#   prometheus     — node_exporter / vllm metrics
+#   nfs-portmap    — rpcbind / portmap
+#   dns-stub       — systemd-resolved local stub
+#   unknown        — anything else; UI shows the raw port + command
+
+_SERVICE_CLASSIFIERS: list[tuple[Any, str]] = [
+    (lambda port, proc, cmd: proc.startswith("vllm"), "vllm"),
+    (lambda port, proc, cmd: proc.startswith("ollama") or port == 11434, "ollama"),
+    (lambda port, proc, cmd: "jupyter" in cmd.lower() or port in (8888, 8889, 8890), "jupyter"),
+    (lambda port, proc, cmd: "telemetrify" in cmd.lower() or "uvicorn" in cmd.lower(), "telemetrify"),
+    (lambda port, proc, cmd: proc == "sshd" or port == 22, "ssh"),
+    (lambda port, proc, cmd: port == 9100 or proc.startswith("node_export"), "prometheus"),
+    (lambda port, proc, cmd: port == 111, "nfs-portmap"),
+    (lambda port, proc, cmd: port == 53, "dns-stub"),
+    # vLLM uses 8000-8099 even if the proc name didn't make it through (e.g.
+    # the launcher's python -m vllm ...): treat that port range as vllm by
+    # default. Listed late so an explicitly-named ollama on 8000 still wins.
+    (lambda port, proc, cmd: 8000 <= port < 8100, "vllm"),
+    # telemetrify FastAPI on its conventional ports (8765, 8767), even if
+    # the process name came through as plain "python".
+    (lambda port, proc, cmd: port in (8765, 8766, 8767), "telemetrify"),
+]
+
+
+def classify_service(port: int, proc: str, command: str) -> str:
+    """Return the `kind` string for a (port, proc, command) tuple."""
+    for matcher, kind in _SERVICE_CLASSIFIERS:
+        try:
+            if matcher(port, proc, command):
+                return kind
+        except Exception:  # noqa: BLE001 — never let a matcher crash the daemon
+            continue
+    return "unknown"
+
+
+def _read_proc_text(pid: int, name: str) -> str:
+    """Read `/proc/<pid>/<name>`; return "" on any error."""
+    try:
+        with open(f"/proc/{pid}/{name}", "rb") as fh:
+            return fh.read().decode("utf-8", errors="replace")
+    except (FileNotFoundError, PermissionError, OSError):
+        return ""
+
+
+def _resolve_uid_to_user(uid: int) -> str:
+    """Map a numeric uid to a login name. Fall back to the numeric form."""
+    try:
+        import pwd
+        return pwd.getpwuid(uid).pw_name
+    except (KeyError, ImportError):
+        return str(uid)
+
+
+def lookup_proc_owner(pid: int) -> dict[str, str]:
+    """Look up `command` (from /proc/<pid>/cmdline) and `user` (from
+    /proc/<pid>/status `Uid:` line, mapped via pwd) for a PID.
+
+    Returns {"command": str, "user": str}. Empty strings on lookup failure
+    so the caller can still emit a row even when /proc is unreadable
+    (containers, restricted namespaces).
+    """
+    cmdline_raw = _read_proc_text(pid, "cmdline")
+    # cmdline is NUL-separated argv; join with spaces for display.
+    command = " ".join(cmdline_raw.split("\x00")).strip()
+    # Trim very long argv (training scripts can have huge --args) so the
+    # JSON snapshot stays small.
+    if len(command) > 240:
+        command = command[:239] + "…"
+
+    user = ""
+    status = _read_proc_text(pid, "status")
+    for line in status.splitlines():
+        if line.startswith("Uid:"):
+            parts = line.split()
+            # `Uid: <real> <effective> <saved> <fs>` — use effective.
+            if len(parts) >= 3:
+                try:
+                    user = _resolve_uid_to_user(int(parts[2]))
+                except ValueError:
+                    user = ""
+            break
+    return {"command": command, "user": user}
+
+
+def enrich_services(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mutate each service row in place to add `kind`, `command`, `user`.
+
+    Schema v1 callers (older Mac clients) just ignore the new fields —
+    they're additive on a Codable struct with optional properties.
+    """
+    for svc in services:
+        pid = svc.get("pid")
+        owner = (lookup_proc_owner(pid) if isinstance(pid, int) else
+                 {"command": "", "user": ""})
+        svc["command"] = owner["command"]
+        svc["user"] = owner["user"]
+        svc["kind"] = classify_service(
+            port=int(svc.get("port") or 0),
+            proc=str(svc.get("proc") or ""),
+            command=owner["command"],
+        )
+    return services
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +505,7 @@ def collect_snapshot() -> dict[str, Any]:
     """Sample all sources once and return a status JSON snapshot."""
     errors: list[str] = []
     gpus = _run_nvidia_smi(errors)
-    services = _run_ss(errors)
+    services = enrich_services(_run_ss(errors))
 
     # Prefer the on-host model_manager when it's installed — that's what
     # every other consumer of "is vLLM up?" already reads, so we agree

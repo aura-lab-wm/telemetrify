@@ -60,6 +60,8 @@ struct StatusView: View {
                     Divider()
                     diagnosis(error: err, kind: store.lastErrorKind)
                 }
+                Divider()
+                ServicesSection().environmentObject(store)
             } else if let error = store.lastError {
                 diagnosis(error: error, kind: store.lastErrorKind)
             } else {

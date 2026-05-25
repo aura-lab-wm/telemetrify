@@ -95,7 +95,7 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         }
     }
 
-    public struct Service: Codable, Equatable, Sendable {
+    public struct Service: Codable, Equatable, Sendable, Identifiable {
         public let port: Int
         public let proc: String
         // Optional: `ss -tlnH` can't always determine the owning PID (e.g.
@@ -104,6 +104,26 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         // those. Was previously non-optional which made any real-world
         // snapshot fail Codable.
         public let pid: Int?
+
+        // Schema v2 — all optional so v1 snapshots still decode.
+        // `kind` is one of: vllm | ollama | jupyter | telemetrify | ssh |
+        // prometheus | nfs-portmap | dns-stub | unknown.
+        public let kind: String?
+        public let command: String?     // /proc/<pid>/cmdline, NUL→space
+        public let user: String?        // login name resolved from Uid:
+
+        public var id: String { "\(port)-\(proc)-\(pid ?? 0)" }
+
+        public init(port: Int, proc: String, pid: Int?,
+                    kind: String? = nil, command: String? = nil,
+                    user: String? = nil) {
+            self.port = port
+            self.proc = proc
+            self.pid = pid
+            self.kind = kind
+            self.command = command
+            self.user = user
+        }
     }
 
     public struct InferenceRecent: Codable, Equatable, Sendable {

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="bolt" x1="14" y1="6" x2="50" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFB347"/>
+      <stop offset="0.32" stop-color="#FF6B00"/>
+      <stop offset="0.62" stop-color="#FF2D9B"/>
+      <stop offset="1" stop-color="#7B2CBF"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="20" y1="6" x2="44" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="32" cy="32" r="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0"   stop-color="#FF6B00" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#FF2D9B" stop-opacity="0.18"/>
+      <stop offset="1"   stop-color="#7B2CBF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.4" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- outer halo -->
+  <circle cx="32" cy="32" r="30" fill="url(#halo)"/>
+
+  <!-- bolt silhouette: chunky 6-vertex lightning, slightly italic -->
+  <g filter="url(#glow)">
+    <path d="
+        M 36  4
+        L 18 30
+        L 28 30
+        L 22 60
+        L 46 28
+        L 35 28
+        L 42  4
+        Z
+      "
+      fill="url(#bolt)"
+      stroke="#FF6B00"
+      stroke-width="0.9"
+      stroke-linejoin="round"
+      stroke-opacity="0.55"/>
+    <!-- glassy highlight along the top-left flank -->
+    <path d="
+        M 36  6
+        L 21 28
+        L 27 28
+      "
+      stroke="url(#rim)" stroke-width="1.6" stroke-linecap="round"
+      fill="none" opacity="0.7"/>
+  </g>
+</svg>

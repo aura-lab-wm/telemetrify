@@ -29,6 +29,7 @@ targets:
     platform: macOS
     sources:
       - RoccoPulseApp/Sources
+      - RoccoPulseApp/Resources/Assets.xcassets
     info:
       path: RoccoPulseApp/Info.plist
       properties:

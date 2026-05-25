@@ -1,17 +1,16 @@
 import SwiftUI
 import RoccoPulseCore
 
-/// The mark rendered next to the menu-bar item. Drives the custom
-/// `RoccoMark` view: a chip-die silhouette with a tier-tinted pulse dot
-/// that animates when the agent is fresh and the SSH probe succeeded.
+/// Drives the branded `RoccoMark` view. The bolt asset is always rendered
+/// in full color; only the pulse-dot overlay + the `dimmed` modifier vary
+/// by `IconState`. That keeps the menu-bar identity recognizable across
+/// states while still surfacing freshness / tier at a glance.
 ///
-/// Color choices:
-///   .fresh        → body=.primary,   dot=tier color (green/yellow/etc.),
-///                   animated
-///   .stale        → body=.secondary, dot=.systemYellow
-///   .veryStale    → body=.secondary, dot=.systemRed
-///   .unreachable  → body=.secondary, dot hidden (a small "no signal" cue)
-///   .unknown      → body=.secondary, dot hidden, IconState yields neutral
+///   .fresh        → full color, tier-tinted dot, animated
+///   .stale        → dimmed,     yellow dot
+///   .veryStale    → dimmed,     red dot
+///   .unreachable  → dimmed,     dot hidden ("no signal" cue)
+///   .unknown      → dimmed,     dot hidden
 struct MenuBarIcon: View {
     @ObservedObject var store: StatusStore
 
@@ -22,19 +21,11 @@ struct MenuBarIcon: View {
             now: Date()
         )
         RoccoMark(
-            bodyTint: bodyColor(for: state),
             pulseTint: dotColor(for: state),
             pulseDotActive: state == .fresh,
-            pulseDotHidden: state == .unreachable || state == .unknown
+            pulseDotHidden: state == .unreachable || state == .unknown,
+            dimmed: state != .fresh
         )
-    }
-
-    private func bodyColor(for state: IconState) -> Color {
-        switch state {
-        case .fresh:                 return .primary
-        case .stale, .veryStale,
-             .unreachable, .unknown: return .secondary
-        }
     }
 
     private func dotColor(for state: IconState) -> Color {

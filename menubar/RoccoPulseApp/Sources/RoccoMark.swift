@@ -1,40 +1,51 @@
 import SwiftUI
+import AppKit
 
-/// Custom menubar mark — `server.rack` SF Symbol with a tier-tinted pulse
-/// dot overlaid in the upper-right corner.
+/// Branded rocco-pulse menubar mark — gradient lightning bolt asset
+/// (Assets.xcassets/RoccoMark.imageset) with a tier-tinted pulse dot
+/// overlaid in the upper-right corner.
 ///
-/// We use a real `Image(systemName:)` as the base because pure-SwiftUI
-/// Canvas / Path labels render to empty space inside `MenuBarExtra` on
-/// macOS 14–15 (the system reserves the slot but never paints the view).
-/// Compositing a Circle overlay on top of an SF Symbol is the most
-/// reliable way to keep tier-tinted state without losing visibility.
+/// Why a raster asset and not SwiftUI Canvas/Path:
+///   - macOS 14/15 MenuBarExtra reserves the slot for Canvas-rooted labels
+///     but never paints them. Image-rooted views render reliably.
+///   - We want the gradient + glow look the user asked for; that needs a
+///     full-color PNG (Assets.xcassets with template-rendering-intent
+///     "original" so macOS does NOT auto-recolor the bolt).
+///
+/// The asset itself is at:
+///   assets/brand/rocco-mark.svg          (source of truth, hand-edited)
+///   assets/brand/rocco-mark-{22,44,66}.png  (rasterized via rsvg-convert)
 struct RoccoMark: View {
-    var bodyTint: Color? = nil
+    /// Color of the pulse dot. nil → no dot tint (uses default green).
     var pulseTint: Color? = nil
+    /// When true the dot fades in/out gently (used in .fresh state).
     var pulseDotActive: Bool = false
+    /// When true the dot is omitted entirely (unreachable / unknown).
     var pulseDotHidden: Bool = false
+    /// Subtle grayscale + opacity dim when the agent is stale/unreachable
+    /// — lets the user spot a stale read at a glance without losing the
+    /// brand silhouette.
+    var dimmed: Bool = false
 
     @State private var pulsing = false
 
     var body: some View {
-        Image(systemName: "server.rack")
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(bodyTint ?? .primary)
+        Image("RoccoMark")
+            .renderingMode(.original)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 20, height: 20)
+            .saturation(dimmed ? 0.25 : 1.0)
+            .opacity(dimmed ? 0.55 : 1.0)
             .overlay(alignment: .topTrailing) {
                 if !pulseDotHidden {
                     Circle()
-                        .fill(pulseTint ?? bodyTint ?? .primary)
+                        .fill(pulseTint ?? Color(nsColor: .systemGreen))
                         .frame(width: 6, height: 6)
-                        .overlay(
-                            // soft halo for extra punch in the bar
-                            Circle()
-                                .stroke(pulseTint ?? bodyTint ?? .primary,
-                                        lineWidth: 0.5)
-                                .opacity(0.4)
-                                .scaleEffect(1.6)
-                        )
-                        .offset(x: 3, y: -2)
-                        .opacity(pulsing && pulseDotActive ? 0.5 : 1.0)
+                        .shadow(color: pulseTint ?? Color(nsColor: .systemGreen),
+                                radius: 2)
+                        .offset(x: 2, y: -1)
+                        .opacity(pulsing && pulseDotActive ? 0.45 : 1.0)
                         .onAppear {
                             guard pulseDotActive else { return }
                             withAnimation(.easeInOut(duration: 1.1)
@@ -49,11 +60,11 @@ struct RoccoMark: View {
 }
 
 #Preview {
-    HStack(spacing: 14) {
-        RoccoMark(bodyTint: .primary, pulseTint: .green, pulseDotActive: true)
-        RoccoMark(bodyTint: .secondary, pulseTint: .yellow)
-        RoccoMark(bodyTint: .secondary, pulseTint: .red)
-        RoccoMark(bodyTint: .secondary, pulseDotHidden: true)
+    HStack(spacing: 16) {
+        RoccoMark(pulseTint: .green, pulseDotActive: true)
+        RoccoMark(pulseTint: .yellow,            dimmed: true)
+        RoccoMark(pulseTint: .red,               dimmed: true)
+        RoccoMark(pulseDotHidden: true,          dimmed: true)
     }
     .padding(40)
     .background(Color.black)

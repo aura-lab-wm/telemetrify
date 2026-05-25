@@ -179,7 +179,7 @@ public struct ServiceRegistry: Sendable {
         let builtinKinds: Set<String> = ["vllm", "telemetrify"]
         let skipPorts: Set<Int> = [22, 53, 111, 9100]  // boring infra
         let knownKinds: Set<String> = [
-            "vllm", "ollama", "jupyter", "telemetrify",
+            "vllm", "ollama", "jupyter", "telemetrify", "aura-pulse",
         ]
         var merged = self.services
         var unknown: [RoccoStatus.Service] = []
@@ -225,6 +225,7 @@ public struct ServiceRegistry: Sendable {
         case "ollama":        return "circle.hexagongrid"
         case "jupyter":       return "book"
         case "telemetrify":   return "bolt.horizontal.circle"
+        case "aura-pulse":    return "waveform.path.ecg"
         case "ssh":           return "key"
         case "prometheus":    return "chart.line.uptrend.xyaxis"
         default:              return "circle.dotted"

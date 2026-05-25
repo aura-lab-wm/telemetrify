@@ -186,7 +186,8 @@ def parse_ss_tlnH(text: str) -> list[dict[str, Any]]:
 #   vllm           — OpenAI-compatible inference server (port 8000-8099)
 #   ollama         — Ollama daemon (default port 11434)
 #   jupyter        — Jupyter Lab / Notebook
-#   telemetrify    — telemetrify FastAPI UI (port 8765-8767 by convention)
+#   aura-pulse     — AURA Pulse watcher-agent (root telemetry daemon, port 8765)
+#   telemetrify    — telemetrify FastAPI UI (port 8766-8767 by convention)
 #   ssh            — sshd
 #   prometheus     — node_exporter / vllm metrics
 #   nfs-portmap    — rpcbind / portmap
@@ -197,6 +198,12 @@ _SERVICE_CLASSIFIERS: list[tuple[Any, str]] = [
     (lambda port, proc, cmd: proc.startswith("vllm"), "vllm"),
     (lambda port, proc, cmd: proc.startswith("ollama") or port == 11434, "ollama"),
     (lambda port, proc, cmd: "jupyter" in cmd.lower() or port in (8888, 8889, 8890), "jupyter"),
+    # AURA Pulse watcher-agent: root-owned ThreadingHTTPServer on 8765. It runs
+    # as root so the amastropaolo agent rarely sees proc/cmd via `ss` — match
+    # the port. Must come BEFORE the telemetrify port rule (which used to grab
+    # 8765 and mislabel it, then get silently deduped against the builtin).
+    (lambda port, proc, cmd: port == 8765 or "watcher_agent" in cmd.lower()
+        or "watcher-agent" in cmd.lower(), "aura-pulse"),
     (lambda port, proc, cmd: "telemetrify" in cmd.lower() or "uvicorn" in cmd.lower(), "telemetrify"),
     (lambda port, proc, cmd: proc == "sshd" or port == 22, "ssh"),
     (lambda port, proc, cmd: port == 9100 or proc.startswith("node_export"), "prometheus"),
@@ -206,9 +213,10 @@ _SERVICE_CLASSIFIERS: list[tuple[Any, str]] = [
     # the launcher's python -m vllm ...): treat that port range as vllm by
     # default. Listed late so an explicitly-named ollama on 8000 still wins.
     (lambda port, proc, cmd: 8000 <= port < 8100, "vllm"),
-    # telemetrify FastAPI on its conventional ports (8765, 8767), even if
-    # the process name came through as plain "python".
-    (lambda port, proc, cmd: port in (8765, 8766, 8767), "telemetrify"),
+    # telemetrify FastAPI on its conventional ports (8766, 8767), even if
+    # the process name came through as plain "python". 8765 is AURA Pulse
+    # (handled above), so it's intentionally excluded here.
+    (lambda port, proc, cmd: port in (8766, 8767), "telemetrify"),
 ]
 
 

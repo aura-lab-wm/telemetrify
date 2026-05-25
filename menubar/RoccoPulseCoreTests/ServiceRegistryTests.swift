@@ -96,4 +96,21 @@ final class ServiceRegistryTests: XCTestCase {
         XCTAssertEqual(result.unknown, [],
             "known kinds shouldn't accidentally land in the unknown bucket")
     }
+
+    func testMergingSurfacesAuraPulseAsKnownRow() {
+        // :8765 is AURA Pulse's watcher-agent (root), NOT telemetrify. It
+        // must render as its own known row — previously it was classified
+        // "telemetrify" and silently dropped by the builtin-dedupe.
+        let discovered: [RoccoStatus.Service] = [
+            RoccoStatus.Service(port: 8765, proc: "", pid: nil,
+                                kind: "aura-pulse", command: "", user: "root"),
+        ]
+        let result = ServiceRegistry(services: ServiceRegistry.builtins())
+            .merging(discovered: discovered)
+        let ids = result.known.services.map { $0.id }
+        XCTAssertTrue(ids.contains("discovered-8765--0"),
+            "aura-pulse must surface as a known row")
+        XCTAssertEqual(result.unknown, [],
+            "aura-pulse is a known kind, not unknown noise")
+    }
 }

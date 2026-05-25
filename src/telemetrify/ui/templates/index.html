@@ -21,10 +21,10 @@
   <section class="results">
     {% if stats %}
     <div class="stats">
-      <span><svg class="icon" aria-hidden="true"><use href="#i-session"/></svg><b>{{ stats.sessions }}</b> sessions</span>
-      <span><svg class="icon" aria-hidden="true"><use href="#i-turns"/></svg><b>{{ stats.turns }}</b> turns</span>
-      <span><svg class="icon" aria-hidden="true"><use href="#i-tool"/></svg><b>{{ stats.tool_calls }}</b> tool calls</span>
-      <span><svg class="icon" aria-hidden="true"><use href="#i-tokens"/></svg><b>{{ stats.tokens }}</b> tokens</span>
+      <span><svg class="icon" aria-hidden="true"><use href="#i-session"/></svg><b title="{{ stats.sessions | commas }}">{{ stats.sessions | compact }}</b> sessions</span>
+      <span><svg class="icon" aria-hidden="true"><use href="#i-turns"/></svg><b title="{{ stats.turns | commas }}">{{ stats.turns | compact }}</b> turns</span>
+      <span><svg class="icon" aria-hidden="true"><use href="#i-tool"/></svg><b title="{{ stats.tool_calls | commas }}">{{ stats.tool_calls | compact }}</b> tool calls</span>
+      <span><svg class="icon" aria-hidden="true"><use href="#i-tokens"/></svg><b title="{{ stats.tokens | commas }}">{{ stats.tokens | compact }}</b> tokens</span>
       <span class="stats-sep"></span>
       <a href="/dashboard" class="stats-link"><svg class="icon" aria-hidden="true"><use href="#i-dashboard"/></svg>dashboard</a>
       <a href="/api/stats" class="stats-link"><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg>stats json</a>
@@ -45,6 +45,12 @@
           <select name="skill">
             <option value="">any</option>
             {% for s in facets.skills %}<option value="{{ s }}" {% if active_filters.skill == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>tag
+          <select name="tag">
+            <option value="">any</option>
+            {% for tg in facets.tags %}<option value="{{ tg }}" {% if active_filters.tag == tg %}selected{% endif %}>{{ tg }}</option>{% endfor %}
           </select>
         </label>
         <label>origin

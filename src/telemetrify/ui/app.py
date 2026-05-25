@@ -39,8 +39,35 @@ def _snippet(text: str, limit: int = 280) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _compact(n) -> str:
+    """Abbreviate large counts so the stats bar stays glanceable:
+    291999084 → '292M', 103990 → '104K', 13493 → '13.5K', 842 → '842'."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return str(n)
+    a = abs(n)
+    if a < 1000:
+        return str(n)
+    for div, suf in ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")):
+        if a >= div:
+            v = n / div
+            return f"{v:.0f}{suf}" if abs(v) >= 100 else f"{v:.1f}{suf}".replace(".0", "")
+    return str(n)
+
+
+def _commas(n) -> str:
+    """Exact value with thousands separators — used for hover titles."""
+    try:
+        return f"{int(n):,}"
+    except (TypeError, ValueError):
+        return str(n)
+
+
 _env.filters["md"] = render_md
 _env.filters["snippet"] = _snippet
+_env.filters["compact"] = _compact
+_env.filters["commas"] = _commas
 
 
 def _render(name: str, ctx: dict) -> HTMLResponse:
@@ -100,6 +127,15 @@ def index(request: Request):
         "origins": [r["origin"] for r in conn.execute(
             "SELECT DISTINCT origin FROM turns ORDER BY origin"
         ).fetchall()],
+        # Distinct individual annotation tags (the `tags` column is CSV).
+        "tags": sorted({
+            t.strip()
+            for (csv,) in conn.execute(
+                "SELECT tags FROM annotations WHERE tags IS NOT NULL AND tags <> ''"
+            ).fetchall()
+            for t in csv.split(",")
+            if t.strip()
+        }),
     }
 
     return _render("index.html", {

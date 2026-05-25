@@ -19,7 +19,7 @@ DEFAULT_FANOUT = 50  # candidates pulled from each side before fusion
 ALLOWED_FILTERS = {
     "model", "cwd_glob", "skill", "cluster", "origin",
     "since", "until",
-    "has_error", "has_followup", "has_annotation",
+    "has_error", "has_followup", "has_annotation", "tag",
     "min_tokens", "max_tokens",
     "min_latency_ms", "max_latency_ms",
 }
@@ -76,6 +76,15 @@ def parse_filters(raw: dict[str, str]) -> Filters:
         clauses.append("EXISTS (SELECT 1 FROM turn_followups f WHERE f.turn_id = t.id)")
     if raw.get("has_annotation") == "1":
         clauses.append("EXISTS (SELECT 1 FROM annotations a WHERE a.turn_id = t.id)")
+    if (v := raw.get("tag")):
+        # Whole-element CSV membership, space-tolerant: a turn matches if any
+        # annotation's `tags` (CSV) contains this tag as a full element. Lets a
+        # curated workspace (e.g. seminar-coding-agents) get its own clean view.
+        clauses.append(
+            "EXISTS (SELECT 1 FROM annotations a WHERE a.turn_id = t.id "
+            "AND (',' || REPLACE(COALESCE(a.tags,''), ' ', '') || ',') LIKE ?)"
+        )
+        params.append("%," + v.replace(" ", "") + ",%")
     if (v := _i(raw.get("min_tokens", ""))) is not None:
         clauses.append("(COALESCE(t.input_tokens,0)+COALESCE(t.output_tokens,0)) >= ?")
         params.append(v)

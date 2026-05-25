@@ -80,18 +80,28 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         // remote to fail Codable with a DecodingError, surfacing as
         // `.decodeFailed` and the misleading "Status file malformed" popover.
         public let uptimeS: Int?
+        // Configured model id (e.g. "Kimi-Dev-72B") — populated by the
+        // agent ONLY when vLLM is offline. Lets the popover say
+        // "will load Kimi-Dev-72B when tier allows" instead of the
+        // anemic "port 8000 · idle". The agent reads this from the
+        // model_manager's `state.model_id` so the answer matches the
+        // tier's `description` shown elsewhere in the popover.
+        public let configuredModel: String?
 
-        public init(running: Bool, model: String?, port: Int, pid: Int?, uptimeS: Int?) {
+        public init(running: Bool, model: String?, port: Int, pid: Int?,
+                    uptimeS: Int?, configuredModel: String? = nil) {
             self.running = running
             self.model = model
             self.port = port
             self.pid = pid
             self.uptimeS = uptimeS
+            self.configuredModel = configuredModel
         }
 
         enum CodingKeys: String, CodingKey {
             case running, model, port, pid
             case uptimeS = "uptime_s"
+            case configuredModel = "configured_model"
         }
     }
 

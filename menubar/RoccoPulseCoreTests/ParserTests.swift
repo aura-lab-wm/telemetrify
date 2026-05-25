@@ -108,3 +108,28 @@ final class ParserTests: XCTestCase {
         XCTAssertTrue(status.isStale(now: Date(timeIntervalSince1970: baseTs + 3600)))
     }
 }
+
+extension ParserTests {
+    /// The popover's whole "name the model that's about to load" UX hinges
+    /// on this field surviving Codable. Pin it so a future refactor of
+    /// VLLM's CodingKeys can't silently drop it.
+    func testVLLMConfiguredModelDecodesWhenOffline() throws {
+        let data = try loadFixture("status-vllm-not-running")
+        let status = try RoccoStatus.decode(from: data)
+        XCTAssertFalse(status.vllm.running)
+        XCTAssertNil(status.vllm.model,
+            "model is null when vllm isn't running")
+        XCTAssertEqual(status.vllm.configuredModel, "Kimi-Dev-72B",
+            "configured_model carries 'what WOULD load' for the popover hint")
+    }
+
+    func testVLLMConfiguredModelIsOptionalWhenAbsent() throws {
+        // The healthy fixture predates the configured_model field. Decoding
+        // must not throw — it's optional on the wire.
+        let data = try loadFixture("status-healthy")
+        let status = try RoccoStatus.decode(from: data)
+        XCTAssertTrue(status.vllm.running)
+        XCTAssertNil(status.vllm.configuredModel,
+            "absent configured_model in JSON → nil on the model, no decode error")
+    }
+}

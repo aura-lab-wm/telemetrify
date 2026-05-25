@@ -142,11 +142,18 @@ public final class ServiceProber: @unchecked Sendable {
         // Tiny dotted-path resolver. Supports just the few keys we need.
         switch path {
         case "vllm.running":
-            return snap.vllm.running
-                ? ServiceStatus(state: .up,
-                                summary: snap.vllm.model ?? label)
-                : ServiceStatus(state: .down,
-                                summary: "port \(snap.vllm.port) · idle")
+            if snap.vllm.running {
+                return ServiceStatus(state: .up,
+                                     summary: snap.vllm.model ?? label)
+            }
+            // OFFLINE: name the model that WOULD load — pulled from the
+            // model_manager's configured_model. Falls back to the
+            // built-in `label` (which the registry sets to a sensible
+            // default like "Kimi-Dev-72B") only when the agent's older
+            // snapshot didn't surface configured_model.
+            let next = snap.vllm.configuredModel ?? label
+            return ServiceStatus(state: .down,
+                                 summary: "will load \(next)")
         default:
             return ServiceStatus(state: .unknown,
                                  error: "unknown path: \(path)")

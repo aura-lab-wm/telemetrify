@@ -9,7 +9,7 @@
     {"idx": 2, "name": "NVIDIA L40S", "util_pct": 0, "mem_used_mib": 0, "mem_total_mib": 46068, "temp_c": 31, "power_w": 25.45},
     {"idx": 3, "name": "NVIDIA L40S", "util_pct": 0, "mem_used_mib": 0, "mem_total_mib": 46068, "temp_c": 30, "power_w": 25.31}
   ],
-  "vllm": {"running": false, "model": null, "port": 8000, "pid": null, "uptime_s": null},
+  "vllm": {"running": false, "model": null, "port": 8000, "pid": null, "uptime_s": null, "configured_model": "Kimi-Dev-72B"},
   "services": [
     {"port": 8765, "proc": "", "pid": null},
     {"port": 22,   "proc": "", "pid": null}

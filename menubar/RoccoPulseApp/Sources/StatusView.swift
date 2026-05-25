@@ -145,6 +145,15 @@ struct StatusView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                } else if let configured = snapshot.vllm.configuredModel {
+                    // Be specific about what the Start button is about
+                    // to bring up — "will load Kimi-Dev-72B" beats the
+                    // anemic "port 8000 · idle".
+                    Text("will load \(configured)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 } else {
                     Text("port \(snapshot.vllm.port) · idle")
                         .font(.caption2)
@@ -152,13 +161,29 @@ struct StatusView: View {
                 }
             }
             Spacer()
-            Button(snapshot.vllm.running ? "Stop" : "Start") {
+            // Label the Start button with WHAT it'll start so the
+            // operator doesn't have to guess. "Start Kimi-Dev-72B"
+            // → clear. Bare "Start" → meaningless.
+            Button(buttonLabel(for: snapshot)) {
                 Task { await runLifecycle(start: !snapshot.vllm.running) }
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(isPerformingLifecycle)
         }
+    }
+
+    /// Specific label so "Start" is never ambiguous about what comes up.
+    /// Falls back to bare "Start" only when the agent doesn't know the
+    /// configured model id (older snapshot schema, missing manager).
+    private func buttonLabel(for snapshot: RoccoStatus) -> String {
+        if snapshot.vllm.running {
+            return snapshot.vllm.model.map { "Stop \($0)" } ?? "Stop"
+        }
+        if let configured = snapshot.vllm.configuredModel {
+            return "Start \(configured)"
+        }
+        return "Start"
     }
 
     // MARK: - GPU row

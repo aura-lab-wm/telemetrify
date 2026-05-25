@@ -3,4 +3,9 @@
 # completed turn into the local SQLite telemetry DB. Never blocks.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/.venv/bin/python" -m telemetrify.capture
+# Silence progress bars (transformers/tqdm/HF) so the embedding step can't die
+# on a closed hook pipe (BrokenPipeError), and route stderr to the capture log
+# instead of the (possibly-closed) hook fd.
+export TQDM_DISABLE=1 HF_HUB_DISABLE_PROGRESS_BARS=1 \
+       TRANSFORMERS_VERBOSITY=error TOKENIZERS_PARALLELISM=false
+exec "$ROOT/.venv/bin/python" -m telemetrify.capture 2>>"$ROOT/data/capture.log"

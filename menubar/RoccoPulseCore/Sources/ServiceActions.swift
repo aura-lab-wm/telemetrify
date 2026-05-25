@@ -60,7 +60,7 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
 
     public init(sshLauncher: ProcessLauncher = RealProcessLauncher(),
                 lifecycle: LifecycleCommands = LifecycleCommands(),
-                urlOpener: @escaping @Sendable (URL) -> Bool = Self.defaultURLOpener) {
+                urlOpener: @escaping @Sendable (URL) -> Bool = DefaultServiceCommandRunner.defaultURLOpener) {
         self.sshLauncher = sshLauncher
         self.lifecycle = lifecycle
         self.urlOpener = urlOpener

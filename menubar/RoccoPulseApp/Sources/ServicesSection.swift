@@ -24,12 +24,26 @@ struct ServicesSection: View {
                 }
             }
 
-            VStack(spacing: 4) {
-                ForEach(model.rows) { row in
-                    ServiceRowView(row: row) { action in
-                        Task { await model.perform(action: action, on: row.service) }
+            // Cap the known list at ~6 rows tall and let it scroll past
+            // that. Prevents the popover from growing past the screen
+            // when a host like Rocco has many classified services.
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 4) {
+                    ForEach(model.rows) { row in
+                        ServiceRowView(row: row) { action in
+                            Task { await model.perform(action: action, on: row.service) }
+                        }
                     }
                 }
+            }
+            .frame(maxHeight: 180)
+
+            // Unknown-ports disclosure — collapsed by default, expand to
+            // see the dozens of random high-port listeners the agent
+            // surfaced but the classifier couldn't tag. Usually other
+            // lab users' transient processes.
+            if !model.unknownPorts.isEmpty {
+                UnknownPortsDisclosure(ports: model.unknownPorts)
             }
 
             if let toast = model.toast {
@@ -39,6 +53,56 @@ struct ServicesSection: View {
         .task(id: store.lastFetchedAt) {
             await model.refresh(snapshot: store.snapshot)
         }
+    }
+}
+
+private struct UnknownPortsDisclosure: View {
+    let ports: [RoccoStatus.Service]
+    @State private var isExpanded: Bool = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(ports, id: \.id) { svc in
+                        HStack(spacing: 6) {
+                            Circle().fill(Color.secondary)
+                                .frame(width: 5, height: 5)
+                            Text("port \(String(svc.port))")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.primary)
+                            if let u = svc.user, !u.isEmpty, u != "0" {
+                                Text("· \(u)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            if let cmd = svc.command, !cmd.isEmpty {
+                                Text(cmd)
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 140)
+        } label: {
+            HStack(spacing: 4) {
+                Text("Unknown ports")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                Text("\(ports.count)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Color.secondary.opacity(0.18))
+                    .clipShape(Capsule())
+            }
+        }
+        .padding(.top, 4)
     }
 }
 
@@ -144,6 +208,7 @@ final class ServicesViewModel: ObservableObject {
     }
 
     @Published private(set) var rows: [Row] = []
+    @Published private(set) var unknownPorts: [RoccoStatus.Service] = []
     @Published private(set) var toast: Toast?
     @Published private(set) var isBusy: Bool = false
 
@@ -156,14 +221,15 @@ final class ServicesViewModel: ObservableObject {
     }
 
     func refresh(snapshot: RoccoStatus?) async {
-        let registry = ServiceRegistry(services: ServiceRegistry.builtins())
+        let result = ServiceRegistry(services: ServiceRegistry.builtins())
             .merging(discovered: snapshot?.services ?? [])
         var newRows: [Row] = []
-        for svc in registry.services {
+        for svc in result.known.services {
             let status = await prober.probe(svc, snapshot: snapshot)
             newRows.append(Row(service: svc, status: status))
         }
         rows = newRows
+        unknownPorts = result.unknown
     }
 
     /// Run the chosen action and reflect the result as a transient toast.

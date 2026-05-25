@@ -156,28 +156,56 @@ public struct ServiceRegistry: Sendable {
         return out
     }
 
-    /// Merge the built-ins with whatever the rocco-agent auto-discovered
-    /// in `RoccoStatus.services[]`. Skip discovered rows whose `kind`
-    /// already has a hand-coded built-in to avoid double-listing (we don't
-    /// want a "vllm (port 8000)" row right next to the built-in "vllm"
-    /// from-status row).
-    public func merging(discovered services: [RoccoStatus.Service]) -> ServiceRegistry {
+    /// Result of merging built-ins with auto-discovered services from
+    /// the agent. Two separate lists so the UI can render:
+    ///   - `known` → primary scrollable list (vllm, ollama, jupyter, …)
+    ///   - `unknown` → collapsed "Unknown ports" disclosure (random
+    ///     high-port listeners we couldn't classify — usually other lab
+    ///     users' transient processes, not interesting at a glance)
+    public struct MergeResult: Sendable {
+        public let known: ServiceRegistry
+        public let unknown: [RoccoStatus.Service]
+    }
+
+    /// Split discovered services into "known kinds we have an icon and a
+    /// story for" and "unknown high-port noise". The previous behavior
+    /// surfaced everything except a hardcoded skip-list (sshd / dns /
+    /// rpcbind / prometheus) — which meant a Rocco with N lab users
+    /// running random tooling produced N rows of `port 60611`-style
+    /// noise that crowded out the actually-actionable services. Flipped
+    /// the policy to known-only on the main list; unknowns go into the
+    /// disclosure.
+    public func merging(discovered services: [RoccoStatus.Service]) -> MergeResult {
         let builtinKinds: Set<String> = ["vllm", "telemetrify"]
         let skipPorts: Set<Int> = [22, 53, 111, 9100]  // boring infra
+        let knownKinds: Set<String> = [
+            "vllm", "ollama", "jupyter", "telemetrify",
+        ]
         var merged = self.services
+        var unknown: [RoccoStatus.Service] = []
         for svc in services {
             let kindStr = svc.kind ?? "unknown"
-            if builtinKinds.contains(kindStr) { continue }
             if skipPorts.contains(svc.port) { continue }
-            merged.append(Service(
-                id: "discovered-\(svc.id)",
-                displayName: discoveredDisplayName(svc: svc),
-                kind: .discovered(snapshotID: svc.id),
-                clientURL: nil,
-                iconSymbol: iconForKind(kindStr)
-            ))
+            if builtinKinds.contains(kindStr) { continue }
+            // Only surface as a primary row if we recognized the kind —
+            // otherwise it's a "port 60611 / amastropaolo / python …"
+            // mystery; collect for the disclosure instead.
+            if knownKinds.contains(kindStr) {
+                merged.append(Service(
+                    id: "discovered-\(svc.id)",
+                    displayName: discoveredDisplayName(svc: svc),
+                    kind: .discovered(snapshotID: svc.id),
+                    clientURL: nil,
+                    iconSymbol: iconForKind(kindStr)
+                ))
+            } else {
+                unknown.append(svc)
+            }
         }
-        return ServiceRegistry(services: merged)
+        return MergeResult(
+            known: ServiceRegistry(services: merged),
+            unknown: unknown
+        )
     }
 
     private func discoveredDisplayName(svc: RoccoStatus.Service) -> String {

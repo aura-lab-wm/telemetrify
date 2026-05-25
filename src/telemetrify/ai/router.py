@@ -2,7 +2,7 @@
 
 For each call:
   1. Read the per-feature override (TELEMETRIFY_LLM_ORDER__<feature>) or fall
-     back to TELEMETRIFY_LLM_ORDER (default: "rocco,ollama,anthropic").
+     back to TELEMETRIFY_LLM_ORDER (default: "rocco,localmac,ollama,anthropic").
   2. For each backend in that order:
      a. Skip if `is_available()` is False (no ai_runs row written).
      b. Write a `pending` row to ai_runs with the new `backend` column.
@@ -38,7 +38,7 @@ from .client import (
 
 
 # ── default order ────────────────────────────────────────────────────────
-_DEFAULT_ORDER = ("rocco", "ollama", "anthropic")
+_DEFAULT_ORDER = ("rocco", "localmac", "ollama", "anthropic")
 
 
 def _order_for(feature: str, default: list[str] | tuple[str, ...]) -> list[str]:
@@ -286,13 +286,32 @@ class BackendRouter:
 # ── factory ──────────────────────────────────────────────────────────────
 def default_router(conn: sqlite3.Connection,
                    override_budget_usd: float | None = None) -> BackendRouter:
-    """Construct the default 3-tier router from env vars."""
+    """Construct the default 4-tier router from env vars.
+
+    Tier order (highest priority → lowest):
+      1. rocco     — vLLM (Kimi-72B) on the GPU box via SSH tunnel; free
+      2. localmac  — Ollama running on THIS Mac at localhost:11434
+                     Brand new tier — makes /ask survive both "Rocco GPUs
+                     all busy" AND "Anthropic OAuth bucket exhausted".
+                     Auto-skipped (is_available=False) when ollama isn't
+                     installed/running locally. Recommended local model:
+                       ollama pull qwen2.5:3b-instruct
+                       ollama pull llama3.2:3b
+                     ~2 GB on disk; runs at 50+ tok/s on M-series Apple Silicon.
+      3. ollama    — Ollama Cloud (https://ollama.com/v1); paid, optional.
+      4. anthropic — final fallback; uses your Claude Code OAuth bucket OR
+                     ANTHROPIC_API_KEY if you set one in settings.json.
+    """
     from .backends.anthropic_backend import AnthropicBackend
     from .backends.openai_compat import OpenAICompatBackend
 
     rocco_base = os.environ.get("ROCCO_BASE_URL", "http://localhost:18000/v1")
     rocco_model = os.environ.get("ROCCO_MODEL", "moonshotai/Kimi-Dev-72B")
     rocco_key = os.environ.get("ROCCO_API_KEY", "EMPTY")
+
+    localmac_base = os.environ.get(
+        "OLLAMA_LOCAL_BASE_URL", "http://localhost:11434/v1")
+    localmac_model = os.environ.get("OLLAMA_LOCAL_MODEL", "qwen2.5:3b-instruct")
 
     ollama_base = os.environ.get("OLLAMA_CLOUD_BASE_URL", "https://ollama.com/v1")
     ollama_key = os.environ.get("OLLAMA_CLOUD_API_KEY", "")
@@ -303,6 +322,15 @@ def default_router(conn: sqlite3.Connection,
         default_model=rocco_model,
         input_price_per_m=0.0000002, output_price_per_m=0.0000002,
     )
+    # Local Ollama uses the same OpenAI-compat protocol — no new backend
+    # class needed. `EMPTY` API key is fine; Ollama ignores it. Synthetic
+    # micro-cost so the ai_runs dashboard distinguishes localmac from
+    # truly-no-op rows.
+    localmac = OpenAICompatBackend(
+        name="localmac", base_url=localmac_base, api_key="EMPTY",
+        default_model=localmac_model,
+        input_price_per_m=0.0000001, output_price_per_m=0.0000001,
+    )
     ollama = OpenAICompatBackend(
         name="ollama", base_url=ollama_base, api_key=ollama_key,
         default_model=ollama_model,
@@ -312,7 +340,7 @@ def default_router(conn: sqlite3.Connection,
 
     return BackendRouter(
         conn=conn,
-        backends=[rocco, ollama, anthropic],
+        backends=[rocco, localmac, ollama, anthropic],
         default_order=_DEFAULT_ORDER,
         override_budget_usd=override_budget_usd,
     )

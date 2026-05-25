@@ -230,3 +230,27 @@ def test_400_remains_fatal():
         request=httpx.Request("POST", "https://example.test/"),
         response=httpx.Response(status_code=400))
     assert BackendRouter._is_transient(exc) is False
+
+
+# ---------------------------------------------------------------------------
+# 4-tier router with localmac (Ollama on this Mac)
+# ---------------------------------------------------------------------------
+
+def test_default_router_includes_localmac_tier(tmp_path):
+    """Regression: when Rocco is offline AND the user's Anthropic OAuth
+    bucket is exhausted, /ask should still have a Mac-local fallback.
+    The default router builds 4 tiers in order: rocco, localmac, ollama,
+    anthropic. Localmac probes localhost:11434/v1 → reports unavailable
+    if Ollama isn't installed locally (silent fall-through), so the new
+    tier is harmless when absent."""
+    import sqlite3
+    from telemetrify.ai.router import default_router, _DEFAULT_ORDER
+    assert "localmac" in _DEFAULT_ORDER
+    assert _DEFAULT_ORDER.index("localmac") == 1, \
+        "localmac belongs RIGHT AFTER rocco — free + local + private"
+
+    conn = sqlite3.connect(":memory:")
+    router = default_router(conn)
+    names = list(router._by_name.keys())
+    assert names == ["rocco", "localmac", "ollama", "anthropic"], \
+        f"unexpected backend order: {names}"

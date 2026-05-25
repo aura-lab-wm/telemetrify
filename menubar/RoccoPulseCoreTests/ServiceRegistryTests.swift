@@ -10,7 +10,7 @@ final class ServiceRegistryTests: XCTestCase {
         XCTAssertTrue(ids.contains("vllm"))
     }
 
-    func testMergingDiscoveredSkipsBuiltinKinds() {
+    func testMergingDedupesBuiltinKinds() {
         // The on-the-wire snapshot will surface a discovered vllm row at
         // port 8000 from `ss -tlnp`. We DON'T want it duplicated next to
         // the built-in vllm row, so the merge must skip kinds we already
@@ -23,17 +23,16 @@ final class ServiceRegistryTests: XCTestCase {
                                 kind: "ollama", command: "ollama serve",
                                 user: "amastropaolo"),
         ]
-        let merged = ServiceRegistry(services: ServiceRegistry.builtins())
+        let result = ServiceRegistry(services: ServiceRegistry.builtins())
             .merging(discovered: discovered)
-        let ids = merged.services.map { $0.id }
+        let ids = result.known.services.map { $0.id }
         XCTAssertFalse(ids.contains("discovered-8000-vllm-1234"),
             "vllm discovered row must be deduped against the built-in")
         XCTAssertTrue(ids.contains("discovered-11434-ollama-9999"),
-            "ollama isn't built-in → must be surfaced as a discovered row")
+            "ollama isn't built-in → must be surfaced as a known row")
     }
 
     func testMergingSkipsBoringInfrastructurePorts() {
-        // sshd, dns, rpcbind, prometheus → not interesting in the popover
         let discovered: [RoccoStatus.Service] = [
             RoccoStatus.Service(port: 22,   proc: "sshd", pid: 1,
                                 kind: "ssh", command: "sshd", user: "root"),
@@ -44,26 +43,57 @@ final class ServiceRegistryTests: XCTestCase {
             RoccoStatus.Service(port: 9100, proc: "node_exporter", pid: 4,
                                 kind: "prometheus", command: "", user: "root"),
         ]
-        let merged = ServiceRegistry(services: ServiceRegistry.builtins())
+        let result = ServiceRegistry(services: ServiceRegistry.builtins())
             .merging(discovered: discovered)
-        let discoveredIDs = merged.services.map { $0.id }
+        let discoveredIDs = result.known.services.map { $0.id }
             .filter { $0.hasPrefix("discovered-") }
         XCTAssertEqual(discoveredIDs, [],
-            "no boring infra rows should leak into the popover")
+            "no boring infra rows should leak into the known list")
+        XCTAssertEqual(result.unknown, [],
+            "boring infra is fully suppressed — not even surfaced as unknown")
     }
 
-    func testMergingSurfacesUnknownDiscoveredByPort() {
-        // A new training job listens on a random high port we don't
-        // classify — still useful to see in the popover.
+    /// REGRESSION: previously unknown-kind discoveries (random high
+    /// ports the classifier couldn't tag) crowded out the actually-
+    /// useful services with dozens of "port 60611" rows. They now
+    /// land in `result.unknown` only.
+    func testMergingRoutesUnknownDiscoveredToUnknownBucket() {
         let discovered: [RoccoStatus.Service] = [
             RoccoStatus.Service(port: 37291, proc: "python", pid: 5555,
                                 kind: "unknown",
                                 command: "python train.py --exp=42",
                                 user: "amastropaolo"),
+            RoccoStatus.Service(port: 60611, proc: "", pid: nil,
+                                kind: "unknown", command: "", user: ""),
         ]
-        let merged = ServiceRegistry(services: ServiceRegistry.builtins())
+        let result = ServiceRegistry(services: ServiceRegistry.builtins())
             .merging(discovered: discovered)
-        let ids = merged.services.map { $0.id }
-        XCTAssertTrue(ids.contains("discovered-37291-python-5555"))
+        let ids = result.known.services.map { $0.id }
+        XCTAssertFalse(ids.contains("discovered-37291-python-5555"),
+            "unknown kinds must NOT appear in the known list")
+        XCTAssertEqual(result.unknown.count, 2,
+            "unknown discoveries must land in the unknown bucket")
+        XCTAssertEqual(Set(result.unknown.map { $0.port }), [37291, 60611])
+    }
+
+    func testKnownDiscoveredKindsStillSurfaceInKnownList() {
+        // ollama / jupyter are known kinds; they should appear in
+        // result.known even though they aren't built-ins.
+        let discovered: [RoccoStatus.Service] = [
+            RoccoStatus.Service(port: 11434, proc: "ollama", pid: 9999,
+                                kind: "ollama", command: "ollama serve",
+                                user: "amastropaolo"),
+            RoccoStatus.Service(port: 8888, proc: "python", pid: 7777,
+                                kind: "jupyter",
+                                command: "python -m jupyterlab",
+                                user: "amastropaolo"),
+        ]
+        let result = ServiceRegistry(services: ServiceRegistry.builtins())
+            .merging(discovered: discovered)
+        let ids = result.known.services.map { $0.id }
+        XCTAssertTrue(ids.contains("discovered-11434-ollama-9999"))
+        XCTAssertTrue(ids.contains("discovered-8888-python-7777"))
+        XCTAssertEqual(result.unknown, [],
+            "known kinds shouldn't accidentally land in the unknown bucket")
     }
 }

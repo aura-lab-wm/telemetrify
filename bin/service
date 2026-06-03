@@ -13,6 +13,11 @@ ROCCO_LABEL="com.amastropaolo.telemetrify-rocco-sync"
 ROCCO_SRC="$ROOT/deploy/$ROCCO_LABEL.plist"
 ROCCO_DEST="$HOME/Library/LaunchAgents/$ROCCO_LABEL.plist"
 
+# Companion agent: daily digest (bin/digest --notify at 22:00).
+DIGEST_LABEL="com.amastropaolo.telemetrify-digest"
+DIGEST_SRC="$ROOT/deploy/$DIGEST_LABEL.plist"
+DIGEST_DEST="$HOME/Library/LaunchAgents/$DIGEST_LABEL.plist"
+
 # Install/uninstall any companion agent by label+src+dest.
 _install_agent() {
   local label="$1" src="$2" dest="$3"
@@ -58,6 +63,14 @@ case "$cmd" in
 
   uninstall-rocco-sync)
     _uninstall_agent "$ROCCO_LABEL" "$ROCCO_DEST"
+    ;;
+
+  install-digest)
+    _install_agent "$DIGEST_LABEL" "$DIGEST_SRC" "$DIGEST_DEST"
+    ;;
+
+  uninstall-digest)
+    _uninstall_agent "$DIGEST_LABEL" "$DIGEST_DEST"
     ;;
 
   start)
@@ -110,7 +123,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "usage: $(basename "$0") {install|uninstall|start|stop|restart|status|logs|install-rocco-sync|uninstall-rocco-sync}"
+    echo "usage: $(basename "$0") {install|uninstall|start|stop|restart|status|logs|install-rocco-sync|uninstall-rocco-sync|install-digest|uninstall-digest}"
     exit 2
     ;;
 esac

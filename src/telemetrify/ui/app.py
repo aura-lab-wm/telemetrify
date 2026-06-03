@@ -611,8 +611,13 @@ def push_vapid_public_key():
 @app.post("/api/push/subscribe")
 async def push_subscribe(request: Request):
     from ..push_notify import register_subscription
-    body = await request.json()
-    sub = body.get("subscription", body)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    sub = body.get("subscription", body) if isinstance(body, dict) else {}
+    if not isinstance(sub, dict) or not sub.get("endpoint"):
+        return JSONResponse({"error": "missing subscription endpoint"}, status_code=400)
     keys = sub.get("keys", {}) or {}
     sub_id = register_subscription(
         connect(),
@@ -627,8 +632,14 @@ async def push_subscribe(request: Request):
 @app.post("/api/push/unsubscribe")
 async def push_unsubscribe(request: Request):
     from ..push_notify import unregister_subscription
-    body = await request.json()
-    ok = unregister_subscription(connect(), endpoint=body["endpoint"])
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    endpoint = body.get("endpoint") if isinstance(body, dict) else None
+    if not endpoint:
+        return JSONResponse({"error": "missing endpoint"}, status_code=400)
+    ok = unregister_subscription(connect(), endpoint=endpoint)
     return JSONResponse({"removed": ok})
 
 
@@ -694,8 +705,11 @@ async def api_insights_recompute(background: BackgroundTasks,
 async def api_ask(request: Request):
     """Stream the Q&A pipeline as SSE: plan → sources → delta → done."""
     import json as _json
-    body = await request.json()
-    question = (body.get("question") or "").strip()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    question = (body.get("question") or "").strip() if isinstance(body, dict) else ""
     if not question:
         return JSONResponse({"error": "missing question"}, status_code=400)
 
@@ -751,7 +765,12 @@ def api_diet_for_cluster(cluster_id: int):
 @app.post("/api/diet/cluster/{cluster_id}/propose")
 def api_diet_propose(cluster_id: int):
     from ..ai.diet import propose_for_cluster
-    r = propose_for_cluster(connect(), cluster_id)
+    try:
+        r = propose_for_cluster(connect(), cluster_id)
+    except Exception as e:
+        # All LLM tiers failed (e.g. exhausted budget / no backend produced
+        # valid JSON) — surface a clean 502 instead of an uncaught 500.
+        return JSONResponse({"error": f"propose failed: {e}"}, status_code=502)
     if not r:
         return JSONResponse({"error": "could not propose"}, status_code=503)
     return JSONResponse(r)

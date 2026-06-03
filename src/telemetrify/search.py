@@ -64,7 +64,8 @@ def parse_filters(raw: dict[str, str]) -> Filters:
         clauses.append("t.cwd LIKE ?"); params.append(v.replace("*", "%"))
     if (v := raw.get("skill")):
         clauses.append("t.attribution_skill = ?"); params.append(v)
-    if (v := _i(raw.get("cluster", ""))):
+    if (v := _i(raw.get("cluster", ""))) is not None:
+        # `is not None`, not truthiness: cluster_id 0 is a real cluster.
         clauses.append("EXISTS (SELECT 1 FROM turn_cluster tc WHERE tc.turn_id = t.id AND tc.cluster_id = ?)")
         params.append(v)
     if (v := raw.get("origin")) in ("organic", "rerun"):
@@ -208,6 +209,10 @@ def similar_turns(conn: sqlite3.Connection, turn_id: int, k: int = 5) -> list[di
           AND t.id != ?
         ORDER BY v.distance ASC LIMIT ?
         """,
-        (row["embedding"], k + 5, row["session_id"], turn_id, k),
+        # Pull a deep KNN pool BEFORE excluding self + same-session: a tight
+        # cluster of same-session neighbors would otherwise crowd out every
+        # cross-session match and we'd return far fewer than k (the old `k + 5`
+        # could return zero for a chatty session).
+        (row["embedding"], max(k * 8, 64), row["session_id"], turn_id, k),
     ).fetchall()
     return [dict(r) for r in rows]

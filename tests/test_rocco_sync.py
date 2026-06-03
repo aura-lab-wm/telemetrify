@@ -64,6 +64,48 @@ def test_active_session_seconds_sums_per_session(tmp_path):
     conn.close()
 
 
+def test_active_session_seconds_caps_idle_inflated_session(tmp_path):
+    """A single session_id whose turns span days (idle gaps, resumed sessions,
+    clock skew) must not inflate 'active time' — each session is capped so the
+    2h trigger reflects real use, not wall-clock lifetime."""
+    from telemetrify import rocco_sync as rs
+
+    db = tmp_path / "t.db"
+    _seed_turns_db(db, [
+        ("BIG", "2026-01-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z"),  # ~5 months
+    ])
+    conn = sqlite3.connect(str(db))
+    assert rs.active_session_seconds(conn) == rs.SESSION_ACTIVE_CAP_S
+    conn.close()
+
+
+def test_tick_skips_when_another_run_holds_the_lock(tmp_path, monkeypatch):
+    """Overlapping launchd ticks must not clobber the shared snapshot: a tick
+    that can't grab the lock skips instead of pushing."""
+    import fcntl
+    from telemetrify import rocco_sync as rs
+
+    state_p = tmp_path / "state.json"
+    monkeypatch.setattr(rs, "STATE_PATH", state_p)
+    rs.save_state(rs.SyncState(last_push_finished_at="x", last_push_ok=True,
+                               prev_connected=False), state_p)
+    db = tmp_path / "t.db"; _seed_turns_db(db, [])
+    monkeypatch.setattr(rs, "probe_connected", lambda *a, **k: True)
+    monkeypatch.setattr(rs, "push",
+                        lambda: (_ for _ in ()).throw(AssertionError("must not push while locked")))
+
+    # Hold the lock the tick will try to acquire (derived from STATE_PATH dir).
+    held = open(tmp_path / ".rocco-sync.lock", "w")
+    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        res = rs.tick(db_path=db)
+        assert res.get("skipped") == "locked"
+        assert res["pushed"] is False
+    finally:
+        fcntl.flock(held, fcntl.LOCK_UN)
+        held.close()
+
+
 # ── state round-trip ─────────────────────────────────────────────────────
 def test_state_roundtrip(tmp_path):
     from telemetrify import rocco_sync as rs

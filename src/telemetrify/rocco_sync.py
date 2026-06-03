@@ -30,6 +30,7 @@ the network entirely.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import sqlite3
@@ -43,6 +44,10 @@ from . import DATA_DIR, DB_PATH
 
 # 2h of cumulative active session time triggers a healthy-connection flush.
 THRESHOLD_S = 2 * 3600
+# Per-session cap on counted active time. A session_id whose turns span days
+# (idle gaps, a resumed session, clock skew) would otherwise inflate the total
+# to months and over-eagerly trip the 2h trigger.
+SESSION_ACTIVE_CAP_S = 6 * 3600
 
 STATE_PATH = DATA_DIR / "rocco-sync-state.json"
 SNAPSHOT_PATH = DATA_DIR / ".rocco-snapshot" / "prompts.db"
@@ -133,7 +138,7 @@ def active_session_seconds(conn: sqlite3.Connection) -> int:
         if a and b:
             secs = (b - a).total_seconds()
             if secs > 0:
-                total += int(secs)
+                total += min(int(secs), SESSION_ACTIVE_CAP_S)
     return total
 
 
@@ -199,8 +204,18 @@ def push() -> dict:
     mpath = snap.parent / "manifest.json"
     mpath.write_text(json.dumps(manifest))
     transport = "ssh " + " ".join(_ssh_opts())
-    _run(["rsync", "-a", "-e", transport, str(mpath),
-          f"{ssh_host()}:{store_dir()}/manifest.json"], timeout=60)
+    mcp = _run(["rsync", "-a", "-e", transport, str(mpath),
+                f"{ssh_host()}:{store_dir()}/manifest.json"], timeout=60)
+    # The DB already landed; a manifest failure is non-fatal but worth flagging
+    # so the remote manifest can't silently diverge from the pushed DB.
+    manifest["manifest_pushed"] = (mcp.returncode == 0)
+
+    # Reclaim the ~1.4GB local snapshot — make_snapshot rebuilds it on the next
+    # push, and rsync's delta is computed against the REMOTE copy, not this file.
+    try:
+        snap.unlink()
+    except Exception:
+        pass
     return manifest
 
 
@@ -221,6 +236,26 @@ def decide(state: SyncState, connected: bool, active_now: int) -> tuple[bool, st
 
 # ── tick (driven by the launchd agent) ───────────────────────────────────
 def tick(*, db_path: Path | None = None) -> dict:
+    # Single-flight: a 1.4GB first push can run longer than the 5-min launchd
+    # interval, so guard against an overlapping tick clobbering the snapshot.
+    lock_path = Path(STATE_PATH).parent / ".rocco-sync.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lockf = open(lock_path, "w")
+    try:
+        fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lockf.close()
+        return {"skipped": "locked", "pushed": False}
+    try:
+        return _tick_locked(db_path=db_path)
+    finally:
+        try:
+            fcntl.flock(lockf, fcntl.LOCK_UN)
+        finally:
+            lockf.close()
+
+
+def _tick_locked(*, db_path: Path | None = None) -> dict:
     state = load_state()
     connected = probe_connected()
 

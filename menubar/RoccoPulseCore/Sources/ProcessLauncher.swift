@@ -56,27 +56,52 @@ public final class RealProcessLauncher: ProcessLauncher, @unchecked Sendable {
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
+        // Drain BOTH pipes on background threads concurrently with the process.
+        // Reading only after the process exits (the old behavior) deadlocks any
+        // child that writes more than the OS pipe buffer (~64KB) before exiting:
+        // its write blocks, so it never terminates, so we never read.
+        final class IOBox: @unchecked Sendable { var out = Data(); var err = Data() }
+        let box = IOBox()
+        let ioGroup = DispatchGroup()
+        let stdoutHandle = stdoutPipe.fileHandleForReading
+        let stderrHandle = stderrPipe.fileHandleForReading
+        ioGroup.enter()
+        DispatchQueue.global().async {
+            box.out = stdoutHandle.readDataToEndOfFile()
+            ioGroup.leave()
+        }
+        ioGroup.enter()
+        DispatchQueue.global().async {
+            box.err = stderrHandle.readDataToEndOfFile()
+            ioGroup.leave()
+        }
+
         let semaphore = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in semaphore.signal() }
 
         try process.run()
 
-        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+        let timedOut = semaphore.wait(timeout: .now() + timeout) == .timedOut
+        if timedOut {
             process.terminate()
             // Give it 1s to exit cleanly before SIGKILL — otherwise interrupt.
             if semaphore.wait(timeout: .now() + 1) == .timedOut {
                 process.interrupt()
             }
+        }
+
+        // Wait for the readers to hit EOF (the pipe write-ends close once the
+        // process and any children exit) so we never leak the IO threads.
+        ioGroup.wait()
+
+        if timedOut {
             throw ProcessLauncherError.timeout
         }
 
-        let stdoutData = (try? stdoutPipe.fileHandleForReading.readToEnd()) ?? Data()
-        let stderrData = (try? stderrPipe.fileHandleForReading.readToEnd()) ?? Data()
-
         return ProcessLaunchResult(
             exitCode: process.terminationStatus,
-            stdout: String(data: stdoutData, encoding: .utf8) ?? "",
-            stderr: String(data: stderrData, encoding: .utf8) ?? ""
+            stdout: String(data: box.out, encoding: .utf8) ?? "",
+            stderr: String(data: box.err, encoding: .utf8) ?? ""
         )
     }
 }

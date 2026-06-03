@@ -14,6 +14,9 @@ from .embed import embed
 
 RRF_K = 60          # standard RRF smoothing constant
 DEFAULT_FANOUT = 50  # candidates pulled from each side before fusion
+# Deeper candidate pool when a filter is active: the filter is applied to the
+# candidate set, so a shallow pool can come back empty for selective filters.
+FILTERED_FANOUT = 1000
 
 # Whitelisted filter param names; anything else is rejected.
 ALLOWED_FILTERS = {
@@ -61,7 +64,8 @@ def parse_filters(raw: dict[str, str]) -> Filters:
         clauses.append("t.cwd LIKE ?"); params.append(v.replace("*", "%"))
     if (v := raw.get("skill")):
         clauses.append("t.attribution_skill = ?"); params.append(v)
-    if (v := _i(raw.get("cluster", ""))):
+    if (v := _i(raw.get("cluster", ""))) is not None:
+        # `is not None`, not truthiness: cluster_id 0 is a real cluster.
         clauses.append("EXISTS (SELECT 1 FROM turn_cluster tc WHERE tc.turn_id = t.id AND tc.cluster_id = ?)")
         params.append(v)
     if (v := raw.get("origin")) in ("organic", "rerun"):
@@ -111,15 +115,28 @@ def hybrid_search(
     qvec = serialize_embedding(embed(q))
     qfts = _quote_fts(q)
 
-    where = ("WHERE " + filters.where) if filters.where else ""
+    # Apply filters INSIDE the candidate CTEs, not after fusion. Previously the
+    # vec/FTS sides each pulled their top-`fanout` purely by similarity and the
+    # filter was applied afterward — so a filtered search returned EMPTY whenever
+    # none of the unfiltered top-50 happened to match the filter, even though
+    # matching turns existed deeper in the ranking. When filtering, we also pull
+    # a much deeper candidate pool so selective filters still surface results.
+    filtered = bool(filters.where)
+    eff_fanout = max(fanout, FILTERED_FANOUT) if filtered else fanout
+    and_where = (" AND " + filters.where) if filtered else ""
     sql = f"""
     WITH vec_rank AS (
-      SELECT turn_id AS id, ROW_NUMBER() OVER (ORDER BY distance) AS r
-      FROM turn_vec WHERE embedding MATCH ? AND k = ?
+      SELECT v.turn_id AS id, ROW_NUMBER() OVER (ORDER BY v.distance) AS r
+      FROM turn_vec v
+      JOIN turns t ON t.id = v.turn_id
+      WHERE v.embedding MATCH ? AND v.k = ?{and_where}
     ),
     fts_rank AS (
-      SELECT rowid AS id, ROW_NUMBER() OVER (ORDER BY rank) AS r
-      FROM turns_fts WHERE turns_fts MATCH ? LIMIT ?
+      SELECT f.rowid AS id, ROW_NUMBER() OVER (ORDER BY f.rank) AS r
+      FROM turns_fts f
+      JOIN turns t ON t.id = f.rowid
+      WHERE turns_fts MATCH ?{and_where}
+      LIMIT ?
     ),
     fused AS (
       SELECT id, SUM(1.0/(? + r)) AS score
@@ -128,11 +145,12 @@ def hybrid_search(
     )
     SELECT t.*, f.score AS score
     FROM fused f JOIN turns t ON t.id = f.id
-    {where}
     ORDER BY f.score DESC
     LIMIT ?
     """
-    params = [qvec, fanout, qfts, fanout, RRF_K, *filters.params, k]
+    params = [qvec, eff_fanout, *filters.params,   # vec_rank (MATCH, k, filter)
+              qfts, *filters.params, eff_fanout,    # fts_rank (MATCH, filter, LIMIT)
+              RRF_K, k]                              # fused weight + final LIMIT
     try:
         rows = conn.execute(sql, params).fetchall()
     except sqlite3.OperationalError:
@@ -142,7 +160,11 @@ def hybrid_search(
 
 
 def _vec_only(conn: sqlite3.Connection, qvec: bytes, k: int, filters: Filters) -> list[dict]:
-    where = ("AND " + filters.where) if filters.where else ""
+    filtered = bool(filters.where)
+    # Deepen the KNN pool when filtering so selective filters don't come back
+    # empty (the candidate set is filtered, then ranked).
+    eff_k = max(k, FILTERED_FANOUT) if filtered else max(k, 50)
+    where = ("AND " + filters.where) if filtered else ""
     sql = f"""
     SELECT t.*, v.distance AS score
     FROM turn_vec v JOIN turns t ON t.id = v.turn_id
@@ -151,7 +173,7 @@ def _vec_only(conn: sqlite3.Connection, qvec: bytes, k: int, filters: Filters) -
     ORDER BY v.distance ASC
     LIMIT ?
     """
-    params = [qvec, max(k, 50), *filters.params, k]
+    params = [qvec, eff_k, *filters.params, k]
     rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
@@ -187,6 +209,10 @@ def similar_turns(conn: sqlite3.Connection, turn_id: int, k: int = 5) -> list[di
           AND t.id != ?
         ORDER BY v.distance ASC LIMIT ?
         """,
-        (row["embedding"], k + 5, row["session_id"], turn_id, k),
+        # Pull a deep KNN pool BEFORE excluding self + same-session: a tight
+        # cluster of same-session neighbors would otherwise crowd out every
+        # cross-session match and we'd return far fewer than k (the old `k + 5`
+        # could return zero for a chatty session).
+        (row["embedding"], max(k * 8, 64), row["session_id"], turn_id, k),
     ).fetchall()
     return [dict(r) for r in rows]

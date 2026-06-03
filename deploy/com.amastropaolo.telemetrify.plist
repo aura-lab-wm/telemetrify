@@ -37,6 +37,26 @@
   <dict>
     <key>PATH</key>
     <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+
+    <!--
+      /ask routing — PLANNER ONLY. The planner needs strict JSON, which the
+      Mac-local Ollama tier can't be trusted to produce ("planner failed: AI
+      response not JSON"). It prefers Rocco (free 72B when the GPU box is up),
+      then the headless `claude -p` tier (reliable JSON via the logged-in
+      Claude Code subscription — no API key, survives an empty ANTHROPIC_*
+      launchd env), then Anthropic as a last resort.
+
+      Note this is the PLANNER's order only (qa._planner_order). The
+      SYNTHESIZER (same feature="qa") returns free-form Markdown, so it stays
+      on the fast default order (rocco,localmac,ollama,anthropic) and keeps
+      using the cheap local tier — no 30s-per-call claude CLI overhead.
+    -->
+    <key>TELEMETRIFY_LLM_ORDER__qa_planner</key>
+    <string>rocco,claude_cli,anthropic</string>
+
+    <!-- Real binary, not the zsh shell-function wrapper. -->
+    <key>CLAUDE_CLI_BIN</key>
+    <string>/opt/homebrew/bin/claude</string>
   </dict>
 
   <key>RunAtLoad</key>

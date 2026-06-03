@@ -29,6 +29,26 @@ def test_blank_tag_is_ignored():
     assert f.params == []
 
 
+def test_cluster_zero_is_not_dropped():
+    """cluster_id 0 is a real cluster, but the walrus `if (v := ...)` treated
+    it as falsy and silently dropped the filter — so a cluster-0 workspace saw
+    the whole corpus instead of its cluster."""
+    f = parse_filters({"cluster": "0"})
+    assert "turn_cluster" in f.where
+    assert f.params == [0]
+
+
+def test_cluster_nonzero_still_works():
+    f = parse_filters({"cluster": "7"})
+    assert "turn_cluster" in f.where
+    assert f.params == [7]
+
+
+def test_cluster_blank_ignored():
+    f = parse_filters({"cluster": ""})
+    assert "turn_cluster" not in f.where
+
+
 def test_tag_combines_with_other_filters():
     f = parse_filters({"tag": "seminar-coding-agents", "model": "claude-opus-4-7"})
     assert "t.model = ?" in f.where

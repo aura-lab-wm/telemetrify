@@ -80,28 +80,44 @@ def _backup_db(tag: str) -> Path | None:
 def _apply_one(conn: sqlite3.Connection, version: int, name: str, path: Path,
                log: Callable[[str], None]) -> None:
     log(f"  applying {version:03d}_{name} ({path.suffix})")
-    needs_vacuum = False
+    applied_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     if path.suffix == ".sql":
         with path.open("r", encoding="utf-8") as f:
             sql = f.read()
-        conn.executescript(sql)
-    else:
-        mod = _load_py(path)
-        if getattr(mod, "BACKUP_FIRST", False):
-            backup = _backup_db(f"{version:03d}_{name}")
-            if backup:
-                log(f"    backed up to {backup.relative_to(DATA_DIR)}")
-        mod.up(conn)
-        needs_vacuum = bool(getattr(mod, "POST_VACUUM", False))
+        # Wrap the DDL AND the ledger insert in ONE explicit transaction so a
+        # crash can't leave the schema changed but unrecorded (→ re-apply →
+        # "table already exists"). SQLite has transactional DDL; the explicit
+        # BEGIN/COMMIT overrides executescript()'s default autocommit. The
+        # `\n;` after the script defends against a migration that ends with a
+        # comment or an unterminated final statement. executescript() can't
+        # bind params, but version/name/applied_at are controlled (filename
+        # regex + timestamp), so inlining is injection-safe.
+        script = (
+            "BEGIN;\n"
+            + sql
+            + "\n;\n"
+            + "INSERT INTO schema_version(version, name, applied_at) "
+            + f"VALUES ({int(version)}, '{name}', '{applied_at}');\n"
+            + "COMMIT;"
+        )
+        conn.executescript(script)
+        return
 
+    # .py migration: backup (opt-in) → up() → ledger insert → commit.
+    mod = _load_py(path)
+    if getattr(mod, "BACKUP_FIRST", False):
+        backup = _backup_db(f"{version:03d}_{name}")
+        if backup:
+            log(f"    backed up to {backup.relative_to(DATA_DIR)}")
+    mod.up(conn)
     conn.execute(
         "INSERT INTO schema_version(version, name, applied_at) VALUES (?, ?, ?)",
-        (version, name, datetime.now(timezone.utc).isoformat(timespec="seconds")),
+        (version, name, applied_at),
     )
     conn.commit()
 
-    if needs_vacuum:
+    if bool(getattr(mod, "POST_VACUUM", False)):
         log("    running VACUUM")
         conn.execute("VACUUM")
 

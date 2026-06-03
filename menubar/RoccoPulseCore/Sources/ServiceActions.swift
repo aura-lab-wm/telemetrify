@@ -19,6 +19,14 @@ public enum ServiceCommand: Equatable, Sendable {
     /// Pin a model profile (1...4) or `nil` for auto, then recycle vLLM so
     /// the manager relaunches with the new selection.
     case selectModel(profile: Int?)
+    /// `launchctl start <label>` — kick a LOCAL (Mac) LaunchAgent. Used to
+    /// bring the telemetrify UI agent up from the menubar without a terminal.
+    case startLocalAgent(label: String)
+    /// `launchctl stop <label>` — stop a local LaunchAgent.
+    case stopLocalAgent(label: String)
+    /// Bounce a local LaunchAgent: `launchctl stop` (best-effort) then
+    /// `launchctl start`, mirroring `bin/service restart`.
+    case restartLocalAgent(label: String)
 }
 
 /// A button bound to a ServiceCommand, shown only when the service's
@@ -107,7 +115,38 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
             try lifecycle.selectModel(profile)
             let name = profile.map { "profile \($0)" } ?? "Auto"
             return "Model: \(name) — restarting vLLM"
+
+        case .startLocalAgent(let label):
+            try runLaunchctl(["start", label])
+            return "\(label) started"
+
+        case .stopLocalAgent(let label):
+            try runLaunchctl(["stop", label])
+            return "\(label) stopped"
+
+        case .restartLocalAgent(let label):
+            // Stop is best-effort: the agent may already be stopped, and the
+            // operation that must succeed is the start. Mirrors bin/service.
+            _ = try? runLaunchctl(["stop", label])
+            try runLaunchctl(["start", label])
+            return "\(label) restarted"
         }
+    }
+
+    /// Run `/bin/launchctl <args>` via the injected launcher (the same seam SSH
+    /// uses, so tests record the argv without forking launchctl).
+    @discardableResult
+    private func runLaunchctl(_ args: [String]) throws -> ProcessLaunchResult {
+        let result = try sshLauncher.run(
+            executable: "/bin/launchctl",
+            arguments: args,
+            timeout: 8)
+        guard result.exitCode == 0 else {
+            throw ServiceCommandError.launchctlFailed(
+                code: result.exitCode,
+                stderr: result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return result
     }
 
     /// Real URL opener — replaced in tests by an injectable closure.
@@ -123,6 +162,7 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
 public enum ServiceCommandError: LocalizedError {
     case urlOpenFailed(URL)
     case sshFailed(code: Int32, stderr: String)
+    case launchctlFailed(code: Int32, stderr: String)
 
     public var errorDescription: String? {
         switch self {
@@ -130,6 +170,8 @@ public enum ServiceCommandError: LocalizedError {
             return "Could not open \(url.absoluteString)"
         case .sshFailed(let code, let stderr):
             return "ssh exited with code \(code): \(stderr)"
+        case .launchctlFailed(let code, let stderr):
+            return "launchctl exited with code \(code): \(stderr)"
         }
     }
 }

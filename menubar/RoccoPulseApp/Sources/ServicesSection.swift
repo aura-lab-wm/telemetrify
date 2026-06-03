@@ -291,10 +291,24 @@ private struct ServiceRowView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
-            Text(row.service.displayName)
+            // The service NAME opens its dashboard (clientURL) when it has
+            // one — frees the single action button for lifecycle (Start/
+            // Restart) while keeping one-click "Open".
+            if let clientURL = row.service.clientURL {
+                Button(row.service.displayName) {
+                    onAction(ServiceAction(label: "Open", showWhen: [],
+                                           command: .openURL(clientURL)))
+                }
+                .buttonStyle(.link)
                 .font(.subheadline.bold())
-                .foregroundStyle(.primary)
                 .lineLimit(1)
+                .help("Open \(clientURL.absoluteString)")
+            } else {
+                Text(row.service.displayName)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
             // Override the summary while in-flight so the operator sees
             // the row is working. Once the prober confirms the new
             // state, inFlight clears and the real summary returns.
@@ -388,11 +402,13 @@ private struct ServiceRowView: View {
     /// recoveries — Stop reads slightly muted, Start/Restart accent-tinted.
     private func buttonTint(for action: ServiceAction) -> Color {
         switch action.command {
-        case .stopVLLM:                 return .secondary
+        case .stopVLLM, .stopLocalAgent:    return .secondary
         case .startVLLM,
              .sshRestartUnit,
-             .selectModel:              return .accentColor
-        case .openURL:                  return .primary
+             .selectModel,
+             .startLocalAgent,
+             .restartLocalAgent:            return .accentColor
+        case .openURL:                      return .primary
         }
     }
 }
@@ -529,9 +545,10 @@ final class ServicesViewModel: ObservableObject {
     /// decide when the in-flight overlay should clear.
     private func isUpAction(_ action: ServiceAction) -> Bool {
         switch action.command {
-        case .stopVLLM:                          return false
+        case .stopVLLM, .stopLocalAgent:         return false
         case .startVLLM, .sshRestartUnit,
-             .openURL, .selectModel:             return true
+             .openURL, .selectModel,
+             .startLocalAgent, .restartLocalAgent: return true
         }
     }
 

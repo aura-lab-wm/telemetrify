@@ -85,15 +85,22 @@ class AnthropicBackend:
         model: str,
         max_tokens: int,
         json_schema: Any | None,
+        timeout: float | None = None,
     ) -> BackendResponse:
         sdk = self._client()
         # The Anthropic SDK does not consume json_schema directly; the
         # router enforces shape after the fact via validate_schema.
+        kwargs: dict[str, Any] = {}
+        if timeout:
+            # Per-request override; without it the SDK default is ~600s, which
+            # let the inline Stop-hook grade block for minutes.
+            kwargs["timeout"] = timeout
         response = sdk.messages.create(
             model=model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
+            **kwargs,
         )
 
         raw_text = ""

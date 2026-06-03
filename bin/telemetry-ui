@@ -3,5 +3,11 @@
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${PORT:-8767}"
+
+# Disaster-recovery: if the local corpus is missing/empty, pull it back from
+# Rocco before serving so general ("whole-corpus") queries have history to
+# search. No-op (a single stat) when the local DB is present, and never fatal.
+"$ROOT/.venv/bin/python" -m telemetrify.rocco_sync restore >/dev/null 2>&1 || true
+
 exec "$ROOT/.venv/bin/python" -m uvicorn telemetrify.ui.app:app \
   --host 127.0.0.1 --port "$PORT" "$@"

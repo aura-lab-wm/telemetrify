@@ -200,13 +200,6 @@ def compute_one(conn, question: Question) -> dict[str, Any]:
     reflection-style "summarize these 8 retrieved turns" prompts.
     Saves the Mac AND keeps OAuth budget for /ask interactive use.
     """
-    from .ai import prompts as P
-    saved_planner = P.QA_PLANNER.model
-    saved_synth = P.QA_SYNTHESIZER.model
-    # PromptTemplate is a frozen dataclass; mutate __dict__ directly.
-    object.__setattr__(P.QA_PLANNER,     "model", "claude-haiku-4-5-20251001")
-    object.__setattr__(P.QA_SYNTHESIZER, "model", "claude-haiku-4-5-20251001")
-
     from .ai.qa import stream_answer
 
     t0 = time.monotonic()
@@ -214,11 +207,16 @@ def compute_one(conn, question: Question) -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
     model_used = ""
     error: str | None = None
-    try:
-        events = list(stream_answer(conn, question.prompt))
-    finally:
-        object.__setattr__(P.QA_PLANNER,     "model", saved_planner)
-        object.__setattr__(P.QA_SYNTHESIZER, "model", saved_synth)
+    # Use a per-call model override + a distinct feature tag rather than
+    # mutating the shared QA_PLANNER/QA_SYNTHESIZER templates: the old global
+    # mutation raced a concurrent interactive /ask (which would briefly see
+    # haiku) and tagged insights' ai_runs as feature='qa', polluting the /ask
+    # daily cost rollup. feature='insights' keeps the books separate.
+    events = list(stream_answer(
+        conn, question.prompt,
+        model_override="claude-haiku-4-5-20251001",
+        feature="insights",
+    ))
 
     for evt in events:
         if evt["event"] == "sources":

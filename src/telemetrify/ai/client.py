@@ -329,10 +329,14 @@ class AnthropicClient:
         max_tokens: int = 1024,
         timeout: float = 30.0,
         model_override: str | None = None,
+        order: list[str] | None = None,
     ) -> "AICallResult":
         """Thin compatibility shim — delegates to BackendRouter so all nine
         feature modules keep working unchanged while gaining the 3-tier
-        fall-through (Rocco vLLM → Ollama Cloud → Anthropic Sonnet)."""
+        fall-through (Rocco vLLM → Ollama Cloud → Anthropic Sonnet).
+
+        `order`, when given, pins the tier sequence for this one call
+        (overriding the feature's env default) — see qa.plan()."""
         from .router import default_router
         router = default_router(self.conn, override_budget_usd=self.override_budget_usd)
         return router.call(
@@ -344,6 +348,7 @@ class AnthropicClient:
             max_tokens=max_tokens,
             timeout=timeout,
             model_override=model_override,
+            order=order,
         )
 
     def _finish(self, ai_run_id: int, started: str, t0: float,

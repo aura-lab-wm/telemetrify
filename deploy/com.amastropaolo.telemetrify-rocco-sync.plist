@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent: replicate the local telemetry corpus to Rocco every 5 minutes.
+  Calls `bin/rocco-sync tick`, which pushes data/prompts.db up to the Rocco box
+  (rsync over ssh) when a trigger fires: first-run bootstrap, retry after a
+  failed push, reconnect-after-outage, or 2h of cumulative active session time.
+  Copy semantics only — the local DB is never modified or deleted.
+
+  RunAtLoad=true so a tick also fires at login (covers reconnect/bootstrap on
+  boot). The tick is cheap when nothing is due (one ssh probe, then exit).
+
+  Install: bin/service install-rocco-sync (or copy into ~/Library/LaunchAgents
+  and `launchctl load -w` it).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.amastropaolo.telemetrify-rocco-sync</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/amastro/Projects/telemetrify/bin/rocco-sync</string>
+    <string>tick</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/amastro/Projects/telemetrify</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+
+    <!-- Rocco transport. Override here if the ssh host alias or remote
+         store path differ from the defaults. -->
+    <key>ROCCO_SSH_HOST</key>
+    <string>rocco</string>
+    <key>ROCCO_STORE_DIR</key>
+    <string>~/telemetrify-store</string>
+  </dict>
+
+  <!-- Every 5 minutes. -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Don't let a slow/hung rsync stack up; one tick at a time. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>Nice</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/amastro/Projects/telemetrify/data/rocco-sync-stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/amastro/Projects/telemetrify/data/rocco-sync-stderr.log</string>
+</dict>
+</plist>

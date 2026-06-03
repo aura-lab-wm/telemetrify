@@ -43,4 +43,5 @@ class LLMBackend(Protocol):
         model: str,
         max_tokens: int,
         json_schema: Any | None,
+        timeout: float | None = None,
     ) -> BackendResponse: ...

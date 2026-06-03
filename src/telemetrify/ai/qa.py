@@ -9,6 +9,7 @@ Exposed via /ask + /api/ask (SSE streaming) in app.py.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from typing import Iterator
@@ -19,17 +20,35 @@ from ..search import Filters, hybrid_search, parse_filters
 
 CITATION_RE = re.compile(r"\[#(\d+)\]")
 
+# The PLANNER must return a strict JSON object. The Mac-local Ollama tier
+# returns prose (→ "AI response not JSON"), so the planner pins a tier order
+# that prefers the reliable-JSON claude_cli tier. Rocco stays first (free 72B
+# when the GPU box is up); anthropic is the last resort. The SYNTHESIZER does
+# NOT use this — it returns free-form Markdown, so it's happy on the faster
+# default order (which keeps the cheap local tier). Override via env if needed.
+_PLANNER_ORDER_DEFAULT = ("rocco", "claude_cli", "anthropic")
 
-def plan(conn: sqlite3.Connection, question: str) -> dict:
+
+def _planner_order() -> list[str]:
+    env = os.environ.get("TELEMETRIFY_LLM_ORDER__qa_planner")
+    if env:
+        return [s.strip() for s in env.split(",") if s.strip()]
+    return list(_PLANNER_ORDER_DEFAULT)
+
+
+def plan(conn: sqlite3.Connection, question: str, *,
+         model_override: str | None = None, feature: str = "qa") -> dict:
     """Translate a question to a structured retrieval plan."""
     client = AnthropicClient(conn)
     res = client.call(
-        feature="qa",
+        feature=feature,
         template=P.QA_PLANNER,
         user_kwargs={"question": question},
         schema=S.QA_PLANNER,
         max_tokens=400,
         timeout=20.0,
+        order=_planner_order(),
+        model_override=model_override,
     )
     return res.parsed
 
@@ -49,7 +68,8 @@ def _format_sources(rows: list[dict]) -> str:
 
 
 def stream_answer(
-    conn: sqlite3.Connection, question: str
+    conn: sqlite3.Connection, question: str, *,
+    model_override: str | None = None, feature: str = "qa",
 ) -> Iterator[dict]:
     """Run plan → retrieve → synthesize. Yield SSE-friendly events:
         {"event":"plan",    "data":<planner output dict>}
@@ -59,7 +79,7 @@ def stream_answer(
         {"event":"error",   "data":"<message>"}
     """
     try:
-        plan_out = plan(conn, question)
+        plan_out = plan(conn, question, model_override=model_override, feature=feature)
     except BudgetExceeded:
         yield {"event": "error", "data": "daily AI budget exhausted"}
         return
@@ -102,13 +122,14 @@ def stream_answer(
     client = AnthropicClient(conn)
     try:
         res = client.call(
-            feature="qa",
+            feature=feature,
             template=P.QA_SYNTHESIZER,
             user_kwargs={"question": question, "k": len(rows),
                          "sources_block": sources_block},
             schema=None,  # free-form Markdown — router skips JSON validation
             max_tokens=1200,
             timeout=45.0,
+            model_override=model_override,
         )
         answer_text = res.raw_text or ""
     except BudgetExceeded:
@@ -120,7 +141,8 @@ def stream_answer(
     # Roll up cost from this exchange.
     cost_row = conn.execute(
         "SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_runs "
-        "WHERE feature='qa' AND date(started_at)=date('now')"
+        "WHERE feature=? AND date(started_at)=date('now')",
+        (feature,),
     ).fetchone()
     yield {"event": "done", "data": {"cost_usd_today": float(cost_row["c"])}}
 

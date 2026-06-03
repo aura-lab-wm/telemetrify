@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import traceback
 from datetime import datetime, timezone
@@ -41,6 +42,12 @@ def _detect_origin(payload: dict) -> str:
 
 
 def main() -> int:
+    # Re-entrancy guard: telemetrify itself can spawn `claude -p` (the claude_cli
+    # LLM tier). That child session's Stop hook would otherwise capture our own
+    # internal calls into the corpus and trigger a nested grade. The backend
+    # sets this flag in the child env so we bail before touching the DB.
+    if os.environ.get("TELEMETRIFY_NO_CAPTURE"):
+        return 0
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     inserted = skipped = errors = 0
     note = ""
@@ -65,6 +72,7 @@ def main() -> int:
             return 0
 
         conn = connect()
+        turn_id = None
         with conn:
             upsert_session(conn, turn)
             from .embed import embed_turn, embed_prompt
@@ -90,16 +98,21 @@ def main() -> int:
                     assign_nearest_cluster(conn, turn_id, prompt_vec)
                 except Exception:
                     _log(f"cluster assign failed: {traceback.format_exc()}")
-                # Round A1: inline LLM-as-Judge grade. Fail-silent (capture must
-                # never block the user). 10s timeout via the SDK's own timeout.
-                try:
-                    from .ai.grader import grade_turn
-                    grade_turn(conn, turn_id, timeout=10.0)
-                except Exception:
-                    _log(f"auto-grade failed: {traceback.format_exc()}")
             finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             record_ingest_run(conn, "hook", started_at, finished_at,
                               inserted, skipped, errors, note)
+
+        # Round A1: inline LLM-as-Judge grade — AFTER the capture transaction
+        # commits. The grader's router issues its OWN commits; running it inside
+        # `with conn:` flushes a partial turn and defeats the rollback the outer
+        # except-block relies on. Fail-silent + a real 10s timeout (the router
+        # now forwards timeout to the backend) so capture never blocks the user.
+        if turn_id is not None:
+            try:
+                from .ai.grader import grade_turn
+                grade_turn(conn, turn_id, timeout=10.0)
+            except Exception:
+                _log(f"auto-grade failed: {traceback.format_exc()}")
         return 0
     except Exception:
         _log(f"capture failed:\n{traceback.format_exc()}")

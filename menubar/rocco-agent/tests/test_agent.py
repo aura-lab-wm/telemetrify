@@ -212,6 +212,8 @@ def test_collect_snapshot_returns_full_schema(agent, nvidia_csv, ss_output):
         "agent_uptime_s",
         "gpus",
         "vllm",
+        "models",      # v4: model-selection block
+        "training",    # v5: training block (relayed from AURA Pulse)
         "services",
         "tier",
         "tier_reason",
@@ -219,7 +221,7 @@ def test_collect_snapshot_returns_full_schema(agent, nvidia_csv, ss_output):
         "errors",
     }
     assert set(snap.keys()) == expected_top
-    assert snap["schema_version"] == 3
+    assert snap["schema_version"] == 5
     assert snap["host"] == "rocco.cs.wm.edu"
     assert snap["ts"] == 1737759600
 
@@ -344,7 +346,9 @@ def test_classify_service_known_patterns():
         (8888, "jupyter","jupyter-lab",                                  "jupyter"),
         (8889, "python", "python -m jupyterlab",                         "jupyter"),
         (8767, "python", "uvicorn telemetrify.ui.app:app",               "telemetrify"),
-        (8765, "python", "uvicorn anything",                             "telemetrify"),
+        # Port 8765 is AURA Pulse's watcher-agent — its port rule fires before
+        # the generic uvicorn→telemetrify rule (telemetrify lives on 8766/8767).
+        (8765, "python", "uvicorn anything",                             "aura-pulse"),
         (22,   "sshd",   "sshd: amastropaolo",                           "ssh"),
         (9100, "node_exporter", "node_exporter",                         "prometheus"),
         (53,   "systemd-resolve", "/lib/systemd/systemd-resolved",       "dns-stub"),

@@ -902,6 +902,20 @@ body.v-page .ask-x-time {
   font-family: var(--vfont-mono); font-size: 11px; color: var(--vfg-4);
 }
 body.v-page .ask-x-state { margin-left: auto; }
+/* Dismiss button — sits at the top-right of each query card, after the state
+   pill (which carries margin-left:auto, so this trails it to the far edge). */
+body.v-page .ask-x-close {
+  appearance: none; background: none; border: none; cursor: pointer;
+  font-family: var(--vfont-mono); font-size: 16px; line-height: 1;
+  color: var(--vfg-4); padding: 1px 5px; border-radius: 5px;
+  transition: color 120ms ease, background 120ms ease;
+}
+body.v-page .ask-x-close:hover {
+  color: var(--vorange); background: rgba(255, 255, 255, 0.06);
+}
+body.v-page .ask-x-close:focus-visible {
+  outline: 1px solid var(--vorange); outline-offset: 1px;
+}
 body.v-page .ask-x-state-dot {
   width: 6px; height: 6px; border-radius: 50%; display: inline-block;
   background: var(--vfg-3); transition: all 0.2s;

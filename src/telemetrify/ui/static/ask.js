@@ -54,12 +54,29 @@
     exchangeNo += 1;
     const card = el("article", { class: "ask-exchange" });
 
+    // Dismiss this query card. If it was the last one, restore the empty
+    // placeholder so the page doesn't look broken.
+    const closeBtn = el("button", {
+      class: "ask-x-close", type: "button",
+      "aria-label": "Close query", title: "Close",
+    }, "×");
+    closeBtn.addEventListener("click", () => {
+      card.remove();
+      if (!convo.querySelector(".ask-exchange")) {
+        convo.appendChild(el("div", { class: "ask-empty" }, [
+          el("div", { class: "meta-line" }, "no queries yet"),
+          el("p", {}, "Type a question above or pick a suggestion. Answers stream in with inline citations to specific turns."),
+        ]));
+      }
+    });
+
     const header = el("header", { class: "ask-x-header" }, [
       el("span", { class: "ask-x-num" }, "QUERY № " + String(exchangeNo).padStart(2, "0")),
       el("span", { class: "ask-x-time" }, new Date().toLocaleTimeString("en-GB", { hour12: false })),
       el("span", { class: "ask-x-state pill", "data-state": "planning" }, [
         el("span", { class: "ask-x-state-dot" }), el("span", { class: "ask-x-state-text" }, "planning")
       ]),
+      closeBtn,
     ]);
 
     const question_el = el("h2", { class: "ask-x-question" }, question);

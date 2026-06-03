@@ -32,13 +32,16 @@ class FakeBackend:
         self._in_price = in_price
         self._out_price = out_price
         self.calls = 0
+        self.last_timeout = None
 
     def is_available(self) -> bool:
         return self._available
 
     def complete(self, *, system: str, user: str, model: str,
-                 max_tokens: int, json_schema: Any | None):
+                 max_tokens: int, json_schema: Any | None,
+                 timeout: float | None = None):
         self.calls += 1
+        self.last_timeout = timeout
         if self._raise is not None:
             raise self._raise
         from telemetrify.ai.backends.base import BackendResponse
@@ -152,6 +155,51 @@ def test_one_ai_runs_row_per_attempted_backend(db):
     assert rows[1]["status"] == "success"
 
 
+def test_bad_json_falls_through_to_next_backend(db):
+    """A schema call whose first backend returns prose (not JSON) must fall
+    through to a stronger tier instead of hard-failing. Regression for the
+    bug that broke /ask + the bulk graders the moment local Ollama came up."""
+    localmac = FakeBackend("localmac", available=True, text="here is some prose, not json")
+    anthropic = FakeBackend("anthropic", available=True, text='{"ok": 1}')
+    router = _setup_router(None, db, [localmac, anthropic],
+                           order=["localmac", "anthropic"])
+
+    res = router.call(
+        feature="grader", template=_make_template(),
+        user_kwargs={"who": "x"}, schema={}, max_tokens=64,
+    )
+    assert res.raw_text == '{"ok": 1}'
+    assert localmac.calls == 1 and anthropic.calls == 1
+    # one failure row (localmac bad JSON) + one success row (anthropic)
+    rows = db.execute("SELECT backend, status FROM ai_runs ORDER BY id").fetchall()
+    assert rows[0]["backend"] == "localmac" and rows[0]["status"] == "failure"
+    assert rows[1]["backend"] == "anthropic" and rows[1]["status"] == "success"
+
+
+def test_all_backends_bad_json_raises_after_exhausting(db):
+    """If EVERY tier returns invalid JSON for a schema call, the router raises
+    after trying them all (no silent empty result)."""
+    a = FakeBackend("localmac", available=True, text="prose A")
+    b = FakeBackend("anthropic", available=True, text="prose B")
+    router = _setup_router(None, db, [a, b], order=["localmac", "anthropic"])
+
+    with pytest.raises(RuntimeError):
+        router.call(feature="grader", template=_make_template(),
+                    user_kwargs={"who": "x"}, schema={}, max_tokens=64)
+    assert a.calls == 1 and b.calls == 1
+
+
+def test_timeout_is_forwarded_to_backend(db):
+    """router.call(timeout=...) must reach backend.complete — previously the
+    param was accepted and silently dropped, so the inline grader could block
+    for minutes."""
+    rocco = FakeBackend("rocco", available=True)
+    router = _setup_router(None, db, [rocco])
+    router.call(feature="qa", template=_make_template(),
+                user_kwargs={"who": "x"}, schema=None, max_tokens=64, timeout=12.5)
+    assert rocco.last_timeout == 12.5
+
+
 def test_per_feature_env_override_pins_backend(monkeypatch, db):
     """`TELEMETRIFY_LLM_ORDER__grader=anthropic` → grader skips rocco/ollama."""
     from telemetrify.ai import router as router_mod
@@ -252,5 +300,85 @@ def test_default_router_includes_localmac_tier(tmp_path):
     conn = sqlite3.connect(":memory:")
     router = default_router(conn)
     names = list(router._by_name.keys())
-    assert names == ["rocco", "localmac", "ollama", "anthropic"], \
+    assert names == ["rocco", "localmac", "ollama", "anthropic", "claude_cli"], \
         f"unexpected backend order: {names}"
+    # claude_cli is registered (so a per-feature order can name it) but stays
+    # OUT of the default order — bulk features must not reach for the slow tier.
+    assert "claude_cli" not in _DEFAULT_ORDER
+
+
+def test_backend_transient_falls_through(db):
+    """A backend that raises BackendTransient (e.g. claude-cli: binary missing,
+    non-zero exit, timeout) must fall through to the next tier — same as a
+    ConnectError. Regression guard for the /ask fix."""
+    from telemetrify.ai.backends.base import BackendTransient
+
+    cli = FakeBackend("claude_cli", available=True,
+                      raise_on_call=BackendTransient("claude CLI exit 1"))
+    anthropic = FakeBackend("anthropic", available=True, text='{"v": 9}')
+    router = _setup_router(None, db, [cli, anthropic],
+                           order=["claude_cli", "anthropic"])
+
+    res = router.call(
+        feature="qa", template=_make_template(),
+        user_kwargs={"who": "x"}, schema=None, max_tokens=64,
+    )
+    assert res.raw_text == '{"v": 9}'
+    assert cli.calls == 1
+    assert anthropic.calls == 1
+
+
+def test_explicit_order_param_overrides_feature_env(monkeypatch, db):
+    """A per-call `order=` pins the tier sequence even when the feature's env
+    default says otherwise — this is how the /ask PLANNER reaches claude_cli
+    while the SYNTHESIZER (same feature) keeps the fast default order."""
+    localmac = FakeBackend("localmac", available=True, text="prose, not json")
+    cli = FakeBackend("claude_cli", available=True, text='{"semantic_query": "ok"}')
+    anthropic = FakeBackend("anthropic", available=True)
+
+    # Feature default would pick localmac first…
+    monkeypatch.setenv("TELEMETRIFY_LLM_ORDER__qa", "localmac,anthropic")
+    router = _setup_router(None, db, [localmac, cli, anthropic],
+                           order=["localmac", "anthropic"])
+
+    # …but the explicit order wins for this call.
+    res = router.call(
+        feature="qa", template=_make_template(),
+        user_kwargs={"who": "x"}, schema=None, max_tokens=64,
+        order=["claude_cli", "anthropic"],
+    )
+    assert res.raw_text == '{"semantic_query": "ok"}'
+    assert localmac.calls == 0
+    assert cli.calls == 1
+    assert anthropic.calls == 0
+
+
+def test_qa_order_routes_claude_cli_before_localmac(monkeypatch, db):
+    """With TELEMETRIFY_LLM_ORDER__qa=claude_cli,anthropic the bad-JSON
+    localmac tier is never consulted for /ask — the planner gets reliable
+    JSON from the claude-cli tier. This is the production fix."""
+    from telemetrify.ai import router as router_mod
+
+    localmac = FakeBackend("localmac", available=True, text="here's some prose, no json")
+    cli = FakeBackend("claude_cli", available=True, text='{"semantic_query": "ok"}')
+    anthropic = FakeBackend("anthropic", available=True)
+
+    monkeypatch.setenv("TELEMETRIFY_LLM_ORDER__qa", "claude_cli,anthropic")
+
+    def fake_default_router(conn, override_budget_usd=None):
+        return router_mod.BackendRouter(
+            conn=conn, backends=[localmac, cli, anthropic],
+            default_order=["localmac", "claude_cli", "anthropic"],
+            override_budget_usd=override_budget_usd,
+        )
+    monkeypatch.setattr(router_mod, "default_router", fake_default_router)
+
+    r = router_mod.default_router(db)
+    res = r.call(
+        feature="qa", template=_make_template(),
+        user_kwargs={"who": "x"}, schema=None, max_tokens=64,
+    )
+    assert res.raw_text == '{"semantic_query": "ok"}'
+    assert localmac.calls == 0, "localmac must be skipped for qa"
+    assert cli.calls == 1
+    assert anthropic.calls == 0

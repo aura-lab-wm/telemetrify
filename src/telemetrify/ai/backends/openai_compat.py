@@ -75,6 +75,7 @@ class OpenAICompatBackend:
         model: str,
         max_tokens: int,
         json_schema: Any | None,
+        timeout: float | None = None,
     ) -> BackendResponse:
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -102,7 +103,7 @@ class OpenAICompatBackend:
             body["response_format"] = {"type": "json_object"}
             body["extra_body"] = {"guided_json": json_schema}
 
-        with httpx.Client(timeout=self.request_timeout_s) as c:
+        with httpx.Client(timeout=timeout if timeout else self.request_timeout_s) as c:
             resp = c.post(url, headers=headers, json=body)
             status = getattr(resp, "status_code", 0)
             if status >= 400:

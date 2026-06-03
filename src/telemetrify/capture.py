@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import traceback
 from datetime import datetime, timezone
@@ -41,6 +42,12 @@ def _detect_origin(payload: dict) -> str:
 
 
 def main() -> int:
+    # Re-entrancy guard: telemetrify itself can spawn `claude -p` (the claude_cli
+    # LLM tier). That child session's Stop hook would otherwise capture our own
+    # internal calls into the corpus and trigger a nested grade. The backend
+    # sets this flag in the child env so we bail before touching the DB.
+    if os.environ.get("TELEMETRIFY_NO_CAPTURE"):
+        return 0
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     inserted = skipped = errors = 0
     note = ""

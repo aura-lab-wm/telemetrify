@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Replicate the local telemetry corpus to Rocco persistent storage.
+#   bin/rocco-sync tick            # evaluate triggers, push if due (launchd-driven)
+#   bin/rocco-sync restore         # pull corpus back if local DB is missing
+#   bin/rocco-sync status          # print sync state
+set -eu
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m telemetrify.rocco_sync "$@"

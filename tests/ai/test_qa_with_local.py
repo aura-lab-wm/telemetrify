@@ -27,7 +27,7 @@ class _LocalBackend:
     def is_available(self) -> bool:
         return True
 
-    def complete(self, *, system, user, model, max_tokens, json_schema):
+    def complete(self, *, system, user, model, max_tokens, json_schema, timeout=None):
         from telemetrify.ai.backends.base import BackendResponse
         self.calls += 1
         if json_schema is not None or "QUESTION:" in user and "SOURCES" not in user:

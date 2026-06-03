@@ -27,7 +27,12 @@ app = FastAPI(title="Prompt Telemetry")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(dash0_router)
 
-_md = MarkdownIt("commonmark", {"breaks": True, "linkify": True})
+# html=False: the commonmark preset enables raw-HTML passthrough, but the
+# rendered output is injected with `|md|safe` into templates over
+# attacker-influenced captured text (prompts/responses). Disabling raw HTML
+# escapes <script>/<img onerror> while keeping markdown formatting; markdown-it's
+# default validateLink already blocks javascript:/data: URLs.
+_md = MarkdownIt("commonmark", {"breaks": True, "linkify": True, "html": False})
 
 
 def render_md(text: str) -> str:

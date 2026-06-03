@@ -8,6 +8,29 @@ LABEL="com.amastropaolo.telemetrify"
 PLIST_SRC="$ROOT/deploy/$LABEL.plist"
 PLIST_DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
+# Companion agent: Rocco replication (bin/rocco-sync tick, every 5 min).
+ROCCO_LABEL="com.amastropaolo.telemetrify-rocco-sync"
+ROCCO_SRC="$ROOT/deploy/$ROCCO_LABEL.plist"
+ROCCO_DEST="$HOME/Library/LaunchAgents/$ROCCO_LABEL.plist"
+
+# Install/uninstall any companion agent by label+src+dest.
+_install_agent() {
+  local label="$1" src="$2" dest="$3"
+  if [[ ! -f "$src" ]]; then echo "missing: $src" >&2; return 1; fi
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cp "$src" "$dest"
+  launchctl unload "$dest" 2>/dev/null || true
+  launchctl load -w "$dest"
+  echo "installed and loaded: $label"
+  launchctl list | grep "$label" || true
+}
+_uninstall_agent() {
+  local label="$1" dest="$2"
+  launchctl unload "$dest" 2>/dev/null || true
+  rm -f "$dest"
+  echo "uninstalled: $label"
+}
+
 cmd="${1:-status}"
 
 case "$cmd" in
@@ -27,6 +50,14 @@ case "$cmd" in
     launchctl unload "$PLIST_DEST" 2>/dev/null || true
     rm -f "$PLIST_DEST"
     echo "uninstalled: $LABEL"
+    ;;
+
+  install-rocco-sync)
+    _install_agent "$ROCCO_LABEL" "$ROCCO_SRC" "$ROCCO_DEST"
+    ;;
+
+  uninstall-rocco-sync)
+    _uninstall_agent "$ROCCO_LABEL" "$ROCCO_DEST"
     ;;
 
   start)
@@ -60,6 +91,14 @@ case "$cmd" in
     else
       echo "health:   UI NOT responding on 8767"
     fi
+    echo
+    echo "rocco-sync agent: $ROCCO_LABEL"
+    if launchctl list | grep -q "$ROCCO_LABEL"; then
+      launchctl list | grep "$ROCCO_LABEL"
+      echo "loaded:   yes"
+    else
+      echo "loaded:   no  (install with: $(basename "$0") install-rocco-sync)"
+    fi
     ;;
 
   logs)
@@ -71,7 +110,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "usage: $(basename "$0") {install|uninstall|start|stop|restart|status|logs}"
+    echo "usage: $(basename "$0") {install|uninstall|start|stop|restart|status|logs|install-rocco-sync|uninstall-rocco-sync}"
     exit 2
     ;;
 esac

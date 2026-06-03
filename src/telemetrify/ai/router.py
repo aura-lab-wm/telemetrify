@@ -28,7 +28,7 @@ from typing import Any
 import httpx
 
 from . import prompts as P
-from .backends.base import BackendResponse
+from .backends.base import BackendResponse, BackendTransient
 from .client import (
     AICallResult,
     BudgetExceeded,
@@ -148,6 +148,11 @@ class BackendRouter:
           - 4xx other than 429                                        → fatal
           - everything else                                           → fatal
         """
+        # Backend self-classified the failure as recoverable (e.g. the
+        # claude-cli tier: binary missing, non-zero exit, subprocess timeout,
+        # error envelope) — fall through to the next tier.
+        if isinstance(exc, BackendTransient):
+            return True
         # httpx transport errors
         if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
             return True
@@ -184,11 +189,19 @@ class BackendRouter:
         max_tokens: int = 1024,
         timeout: float = 30.0,
         model_override: str | None = None,
+        order: list[str] | None = None,
     ) -> AICallResult:
         system, user = template.render(**user_kwargs)
         model = model_override or template.model
 
-        order = _order_for(feature, self.default_order)
+        # An explicit `order` pins the tier sequence for THIS call regardless of
+        # the feature's env default — used by the /ask planner, which needs the
+        # reliable-JSON claude_cli tier even though the synthesizer (same
+        # feature="qa") is happy on the faster local tier.
+        if order:
+            order = list(order)
+        else:
+            order = _order_for(feature, self.default_order)
 
         last_failure: Exception | None = None
 
@@ -229,6 +242,7 @@ class BackendRouter:
                 resp: BackendResponse = backend.complete(
                     system=system, user=user, model=model,
                     max_tokens=max_tokens, json_schema=schema,
+                    timeout=timeout,
                 )
             except BudgetExceeded as e:
                 # Should not happen here (we pre-checked) but treat as fatal.
@@ -255,25 +269,30 @@ class BackendRouter:
             # Parse JSON if a schema was supplied (synthesizer passes None).
             parsed: dict | Any = {}
             if schema is not None:
+                schema_error: str | None = None
                 try:
                     parsed = AnthropicClient._extract_json(resp.raw_text)
                 except Exception as e:
-                    self._finish(run_id, t0, resp.input_tokens, resp.output_tokens,
-                                  cost, "failure", f"bad JSON: {e}")
-                    # Deterministic — no fallback on parse failure.
-                    raise RuntimeError(
-                        f"AI response not JSON: {e}\n---\n{resp.raw_text[:500]}"
-                    )
+                    schema_error = f"bad JSON: {e}"
+                else:
+                    errs = AnthropicClient.validate_schema(parsed, schema)
+                    if errs:
+                        schema_error = "schema: " + "; ".join(errs[:3])
 
-                errs = AnthropicClient.validate_schema(parsed, schema)
-                if errs:
+                if schema_error is not None:
                     self._finish(run_id, t0, resp.input_tokens, resp.output_tokens,
-                                  cost, "failure",
-                                  "schema: " + "; ".join(errs[:3]))
-                    raise RuntimeError(
-                        f"AI response failed schema validation: {errs[:3]}\n"
-                        f"---\n{resp.raw_text[:500]}"
+                                  cost, "failure", schema_error)
+                    # A weak tier (e.g. local Ollama) returning prose / invalid
+                    # JSON is NOT a broken request — the payload is fine, the
+                    # backend just couldn't follow the schema. Fall through so a
+                    # stronger tier can satisfy it, instead of hard-failing the
+                    # whole call (the bug that broke /ask + the bulk graders the
+                    # moment a local model came online). If EVERY tier fails to
+                    # produce valid JSON, last_failure is raised after the loop.
+                    last_failure = RuntimeError(
+                        f"{backend_name} {schema_error}\n---\n{resp.raw_text[:500]}"
                     )
+                    continue
 
             self._finish(run_id, t0, resp.input_tokens, resp.output_tokens,
                           cost, "success", None)
@@ -321,6 +340,7 @@ def default_router(conn: sqlite3.Connection,
                      ANTHROPIC_API_KEY if you set one in settings.json.
     """
     from .backends.anthropic_backend import AnthropicBackend
+    from .backends.claude_cli import ClaudeCLIBackend
     from .backends.openai_compat import OpenAICompatBackend
 
     rocco_base = os.environ.get("ROCCO_BASE_URL", "http://localhost:18000/v1")
@@ -361,10 +381,16 @@ def default_router(conn: sqlite3.Connection,
         input_price_per_m=0.20, output_price_per_m=0.60,
     )
     anthropic = AnthropicBackend()
+    # Headless `claude -p` tier. NOT in _DEFAULT_ORDER (it's slow + loads the
+    # full Claude Code system prompt), so bulk features never reach for it.
+    # It's selected explicitly per-feature via TELEMETRIFY_LLM_ORDER__<feature>
+    # — notably qa (/ask), whose PLANNER needs strict JSON that the local
+    # Ollama tier can't be trusted to produce.
+    claude_cli = ClaudeCLIBackend()
 
     return BackendRouter(
         conn=conn,
-        backends=[rocco, localmac, ollama, anthropic],
+        backends=[rocco, localmac, ollama, anthropic, claude_cli],
         default_order=_DEFAULT_ORDER,
         override_budget_usd=override_budget_usd,
     )

@@ -9,6 +9,7 @@ Exposed via /ask + /api/ask (SSE streaming) in app.py.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from typing import Iterator
@@ -18,6 +19,21 @@ from .client import AnthropicClient, BudgetExceeded
 from ..search import Filters, hybrid_search, parse_filters
 
 CITATION_RE = re.compile(r"\[#(\d+)\]")
+
+# The PLANNER must return a strict JSON object. The Mac-local Ollama tier
+# returns prose (→ "AI response not JSON"), so the planner pins a tier order
+# that prefers the reliable-JSON claude_cli tier. Rocco stays first (free 72B
+# when the GPU box is up); anthropic is the last resort. The SYNTHESIZER does
+# NOT use this — it returns free-form Markdown, so it's happy on the faster
+# default order (which keeps the cheap local tier). Override via env if needed.
+_PLANNER_ORDER_DEFAULT = ("rocco", "claude_cli", "anthropic")
+
+
+def _planner_order() -> list[str]:
+    env = os.environ.get("TELEMETRIFY_LLM_ORDER__qa_planner")
+    if env:
+        return [s.strip() for s in env.split(",") if s.strip()]
+    return list(_PLANNER_ORDER_DEFAULT)
 
 
 def plan(conn: sqlite3.Connection, question: str) -> dict:
@@ -30,6 +46,7 @@ def plan(conn: sqlite3.Connection, question: str) -> dict:
         schema=S.QA_PLANNER,
         max_tokens=400,
         timeout=20.0,
+        order=_planner_order(),
     )
     return res.parsed
 

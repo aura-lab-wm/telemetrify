@@ -101,13 +101,17 @@ public struct ServiceRegistry: Sendable {
                 clientURL: webURL,
                 iconSymbol: "bolt.horizontal.circle",
                 actions: [
-                    // Open always — telemetrify either responds or it
-                    // doesn't; either way the URL is a valid recovery
-                    // path (browser will say "can't connect" if down,
-                    // which is itself actionable).
-                    ServiceAction(label: "Open",
-                                  showWhen: [.up, .down, .unknown],
-                                  command: .openURL(webURL)),
+                    // Local LaunchAgent lifecycle straight from the menubar
+                    // (no terminal). Disjoint states → one button each:
+                    //   down/unknown → Start, up → Restart.
+                    // "Open" the dashboard moved onto the row NAME (clientURL)
+                    // so the single action button is free for lifecycle.
+                    ServiceAction(label: "Start",
+                                  showWhen: [.down, .unknown],
+                                  command: .startLocalAgent(label: "com.amastropaolo.telemetrify")),
+                    ServiceAction(label: "Restart",
+                                  showWhen: [.up],
+                                  command: .restartLocalAgent(label: "com.amastropaolo.telemetrify")),
                 ]
             ))
         }

@@ -48,6 +48,26 @@ final class ServiceRegistryTests: XCTestCase {
             "remote ollama must still surface alongside the local built-in")
     }
 
+    func testDiscoveredRowsNameTheHostNotTheUser() {
+        // "ollama (amastropaolo)" didn't say WHICH MACHINE it runs on —
+        // ambiguous next to the local "ollama (mac)" built-in. Discovered
+        // rows all come from the rocco-agent snapshot, so name the host;
+        // the owning user already shows in the row summary ("by …").
+        let discovered: [RoccoStatus.Service] = [
+            RoccoStatus.Service(port: 11434, proc: "ollama", pid: 9999,
+                                kind: "ollama", command: "ollama serve",
+                                user: "amastropaolo"),
+        ]
+        let result = ServiceRegistry(services: ServiceRegistry.builtins())
+            .merging(discovered: discovered)
+        let remote = result.known.services.first {
+            $0.id == "discovered-11434-ollama-9999"
+        }
+        XCTAssertEqual(remote?.displayName, "ollama (rocco)")
+        let local = result.known.services.first { $0.id == "ollama-local" }
+        XCTAssertEqual(local?.displayName, "ollama (mac)")
+    }
+
     func testMergingDedupesBuiltinKinds() {
         // The on-the-wire snapshot will surface a discovered vllm row at
         // port 8000 from `ss -tlnp`. We DON'T want it duplicated next to

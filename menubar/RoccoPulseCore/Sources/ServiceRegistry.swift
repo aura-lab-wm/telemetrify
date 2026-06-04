@@ -203,7 +203,8 @@ public struct ServiceRegistry: Sendable {
     /// noise that crowded out the actually-actionable services. Flipped
     /// the policy to known-only on the main list; unknowns go into the
     /// disclosure.
-    public func merging(discovered services: [RoccoStatus.Service]) -> MergeResult {
+    public func merging(discovered services: [RoccoStatus.Service],
+                        host: String = "rocco") -> MergeResult {
         let builtinKinds: Set<String> = ["vllm", "telemetrify"]
         let skipPorts: Set<Int> = [22, 53, 111, 9100]  // boring infra
         let knownKinds: Set<String> = [
@@ -221,7 +222,7 @@ public struct ServiceRegistry: Sendable {
             if knownKinds.contains(kindStr) {
                 merged.append(Service(
                     id: "discovered-\(svc.id)",
-                    displayName: discoveredDisplayName(svc: svc),
+                    displayName: discoveredDisplayName(svc: svc, host: host),
                     kind: .discovered(snapshotID: svc.id),
                     clientURL: nil,
                     iconSymbol: iconForKind(kindStr)
@@ -236,15 +237,17 @@ public struct ServiceRegistry: Sendable {
         )
     }
 
-    private func discoveredDisplayName(svc: RoccoStatus.Service) -> String {
+    /// Discovered rows all come from the rocco-agent snapshot, i.e. they
+    /// run on the REMOTE host — name it, so "ollama (rocco)" reads
+    /// unambiguously next to the local "ollama (mac)" built-in. The
+    /// owning user already shows in the row summary ("… by amastropaolo").
+    private func discoveredDisplayName(svc: RoccoStatus.Service,
+                                       host: String) -> String {
         let kindStr = svc.kind ?? "unknown"
         if kindStr == "unknown" {
             return "port \(svc.port)"
         }
-        if let u = svc.user, !u.isEmpty, u != "0", u != "root" {
-            return "\(kindStr) (\(u))"
-        }
-        return kindStr
+        return "\(kindStr) (\(host))"
     }
 
     private func iconForKind(_ kind: String) -> String {

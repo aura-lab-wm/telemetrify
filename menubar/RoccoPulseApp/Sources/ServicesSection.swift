@@ -37,6 +37,7 @@ struct ServicesSection: View {
                     ServiceRowView(
                         row: row,
                         inFlight: model.inFlight.contains(row.service.id),
+                        logLines: model.actionLogs[row.service.id] ?? [],
                         modelPicker: modelPicker(for: row.service),
                         trainingHint: trainingHint(for: row.service)
                     ) { action in
@@ -272,6 +273,7 @@ private struct ServiceRowView: View {
 
     let row: ServicesViewModel.Row
     let inFlight: Bool
+    let logLines: [String]
     var modelPicker: ModelPicker? = nil
     /// vLLM-only: a short note (e.g. "capped by training") explaining why Auto
     /// landed on a smaller model. nil hides it.
@@ -279,69 +281,74 @@ private struct ServiceRowView: View {
     let onAction: (ServiceAction) -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Pulsing dot during in-flight so the operator sees motion
-            // immediately — no more "I clicked Start and nothing
-            // happened for 15 seconds".
-            Circle()
-                .fill(inFlight ? Color.accentColor : stateColor)
-                .frame(width: 8, height: 8)
-                .opacity(inFlight ? 0.55 : 1.0)
-            Image(systemName: row.service.iconSymbol)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-            // The service NAME opens its dashboard (clientURL) when it has
-            // one — frees the single action button for lifecycle (Start/
-            // Restart) while keeping one-click "Open".
-            if let clientURL = row.service.clientURL {
-                Button(row.service.displayName) {
-                    onAction(ServiceAction(label: "Open", showWhen: [],
-                                           command: .openURL(clientURL)))
-                }
-                .buttonStyle(.link)
-                .font(.subheadline.bold())
-                .lineLimit(1)
-                .help("Open \(clientURL.absoluteString)")
-            } else {
-                Text(row.service.displayName)
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-            }
-            // Override the summary while in-flight so the operator sees
-            // the row is working. Once the prober confirms the new
-            // state, inFlight clears and the real summary returns.
-            if inFlight {
-                Text("working…")
-                    .font(.footnote)
-                    .foregroundStyle(Color.accentColor)
-                    .lineLimit(1)
-            } else if let summary = row.status.summary {
-                Text(summary)
-                    .font(.footnote)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                // Pulsing dot during in-flight so the operator sees motion
+                // immediately — no more "I clicked Start and nothing
+                // happened for 15 seconds".
+                Circle()
+                    .fill(inFlight ? Color.accentColor : stateColor)
+                    .frame(width: 8, height: 8)
+                    .opacity(inFlight ? 0.55 : 1.0)
+                Image(systemName: row.service.iconSymbol)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                // The service NAME opens its dashboard (clientURL) when it has
+                // one — frees the single action button for lifecycle (Start/
+                // Restart) while keeping one-click "Open".
+                if let clientURL = row.service.clientURL {
+                    Button(row.service.displayName) {
+                        onAction(ServiceAction(label: "Open", showWhen: [],
+                                               command: .openURL(clientURL)))
+                    }
+                    .buttonStyle(.link)
+                    .font(.subheadline.bold())
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .help("Open \(clientURL.absoluteString)")
+                } else {
+                    Text(row.service.displayName)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+                // Override the summary while in-flight so the operator sees
+                // the row is working. Once the prober confirms the new
+                // state, inFlight clears and the real summary returns.
+                if inFlight {
+                    Text("working…")
+                        .font(.footnote)
+                        .foregroundStyle(Color.accentColor)
+                        .lineLimit(1)
+                } else if let summary = row.status.summary {
+                    Text(summary)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                if !inFlight, let hint = trainingHint {
+                    Text("· \(hint)")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                        .help("AURA Pulse reports a training job is using GPUs, so Auto picked a smaller model.")
+                }
+                Spacer(minLength: 4)
+                if !inFlight, let mp = modelPicker, !mp.available.isEmpty {
+                    modelMenu(mp)
+                }
+                if inFlight {
+                    ProgressView().controlSize(.mini)
+                } else if let action = row.service.action(for: row.status.state) {
+                    Button(action.label) { onAction(action) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(buttonTint(for: action))
+                }
             }
-            if !inFlight, let hint = trainingHint {
-                Text("· \(hint)")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                    .lineLimit(1)
-                    .help("AURA Pulse reports a training job is using GPUs, so Auto picked a smaller model.")
-            }
-            Spacer(minLength: 4)
-            if !inFlight, let mp = modelPicker, !mp.available.isEmpty {
-                modelMenu(mp)
-            }
-            if inFlight {
-                ProgressView().controlSize(.mini)
-            } else if let action = row.service.action(for: row.status.state) {
-                Button(action.label) { onAction(action) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(buttonTint(for: action))
+            if !logLines.isEmpty {
+                ServiceLogStrip(lines: logLines, isLive: inFlight)
             }
         }
         .padding(.vertical, 1)
@@ -413,6 +420,43 @@ private struct ServiceRowView: View {
     }
 }
 
+private struct ServiceLogStrip: View {
+    let lines: [String]
+    let isLive: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: "terminal")
+                    .font(.system(size: 10))
+                Text(isLive ? "live logs" : "last action")
+                    .font(.system(size: 10, design: .monospaced))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(isLive ? Color.accentColor : Color.secondary)
+            ForEach(displayLines, id: \.self) { line in
+                Text(line)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.leading, 36)
+        .padding(.trailing, 6)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.055))
+        )
+    }
+
+    private var displayLines: [String] {
+        Array(lines.suffix(8))
+    }
+}
+
 private struct ServiceToastView: View {
     let toast: ServicesViewModel.Toast
     let onDismiss: () -> Void
@@ -463,6 +507,7 @@ final class ServicesViewModel: ObservableObject {
     @Published private(set) var unknownPorts: [RoccoStatus.Service] = []
     @Published private(set) var toast: Toast?
     @Published private(set) var isBusy: Bool = false
+    @Published private(set) var actionLogs: [String: [String]] = [:]
     /// Service IDs currently waiting on the next snapshot to confirm
     /// their action took effect. Used to overlay a "starting…" /
     /// "stopping…" hint in the row so the operator gets immediate
@@ -528,14 +573,22 @@ final class ServicesViewModel: ObservableObject {
     func perform(action: ServiceAction, on service: Service) async {
         isBusy = true
         inFlight.insert(service.id)
+        actionLogs[service.id] = []
+        appendLog("queued \(action.label)", for: service.id)
         defer { isBusy = false }
         do {
-            let summary = try await runner.perform(action.command)
+            let summary = try await runner.perform(action.command) { [weak self] line in
+                Task { @MainActor in
+                    self?.appendLog(line, for: service.id)
+                }
+            }
+            appendLog(summary, for: service.id)
             prober.invalidate()
             showToast(.init(message: summary, isError: false))
             await pollUntilStateSettles(for: service, expectingUp: isUpAction(action))
         } catch {
             inFlight.remove(service.id)
+            appendLog("error: \(error.localizedDescription)", for: service.id)
             showToast(.init(message: error.localizedDescription, isError: true))
         }
     }
@@ -569,8 +622,10 @@ final class ServicesViewModel: ObservableObject {
             await refresh(snapshot: store?.snapshot)
             let settled = rows.first { $0.service.id == service.id }
                 .map { $0.status.state == .up } ?? false
+            appendLog("poll +\(delay)s: \(settled ? "up" : "not ready")", for: service.id)
             if settled == expectingUp {
                 inFlight.remove(service.id)
+                appendLog("settled", for: service.id)
                 return
             }
         }
@@ -586,6 +641,14 @@ final class ServicesViewModel: ObservableObject {
                     + " yet — check `ssh rocco journalctl --user -u rocco-agent`",
                 isError: true))
         }
+    }
+
+    private func appendLog(_ line: String, for serviceID: String) {
+        let clean = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        var lines = actionLogs[serviceID] ?? []
+        lines.append(clean)
+        actionLogs[serviceID] = Array(lines.suffix(80))
     }
 
     func dismissToast() {

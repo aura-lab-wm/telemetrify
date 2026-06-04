@@ -62,6 +62,13 @@ public protocol ServiceCommandRunner: AnyObject, Sendable {
     /// the popover toast ("vLLM start requested", "rocco-agent restarted",
     /// etc.). Throws on failure with a localized error.
     func perform(_ command: ServiceCommand) async throws -> String
+    func perform(_ command: ServiceCommand, log: (@Sendable (String) -> Void)?) async throws -> String
+}
+
+public extension ServiceCommandRunner {
+    func perform(_ command: ServiceCommand) async throws -> String {
+        try await perform(command, log: nil)
+    }
 }
 
 public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked Sendable {
@@ -77,10 +84,12 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
         self.urlOpener = urlOpener
     }
 
-    public func perform(_ command: ServiceCommand) async throws -> String {
+    public func perform(_ command: ServiceCommand, log: (@Sendable (String) -> Void)? = nil) async throws -> String {
+        log?("$ \(command.displayName)")
         switch command {
         case .openURL(let url):
             if urlOpener(url) {
+                log?("opened \(url.absoluteString)")
                 return "Opened \(url.absoluteString)"
             }
             throw ServiceCommandError.urlOpenFailed(url)
@@ -96,6 +105,7 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
                 executable: "/usr/bin/ssh",
                 arguments: args,
                 timeout: 8)
+            emit(result, to: log)
             guard result.exitCode == 0 else {
                 throw ServiceCommandError.sshFailed(
                     code: result.exitCode,
@@ -104,31 +114,37 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
             return "\(unit) restarted on \(host)"
 
         case .startVLLM:
-            try lifecycle.startVLLM()
+            try withLifecycleLogging(log) {
+                try lifecycle.startVLLM()
+            }
             return "vLLM start requested"
 
         case .stopVLLM:
-            try lifecycle.stopVLLM()
+            try withLifecycleLogging(log) {
+                try lifecycle.stopVLLM()
+            }
             return "vLLM stop requested"
 
         case .selectModel(let profile):
-            try lifecycle.selectModel(profile)
+            try withLifecycleLogging(log) {
+                try lifecycle.selectModel(profile)
+            }
             let name = profile.map { "profile \($0)" } ?? "Auto"
             return "Model: \(name) — restarting vLLM"
 
         case .startLocalAgent(let label):
-            try runLaunchctl(["start", label])
+            _ = try runLaunchctl(["start", label], log: log)
             return "\(label) started"
 
         case .stopLocalAgent(let label):
-            try runLaunchctl(["stop", label])
+            _ = try runLaunchctl(["stop", label], log: log)
             return "\(label) stopped"
 
         case .restartLocalAgent(let label):
             // Stop is best-effort: the agent may already be stopped, and the
             // operation that must succeed is the start. Mirrors bin/service.
-            _ = try? runLaunchctl(["stop", label])
-            try runLaunchctl(["start", label])
+            _ = try? runLaunchctl(["stop", label], log: log)
+            _ = try runLaunchctl(["start", label], log: log)
             return "\(label) restarted"
         }
     }
@@ -141,12 +157,48 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
             executable: "/bin/launchctl",
             arguments: args,
             timeout: 8)
+        emit(result, to: nil)
         guard result.exitCode == 0 else {
             throw ServiceCommandError.launchctlFailed(
                 code: result.exitCode,
                 stderr: result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         return result
+    }
+
+    private func runLaunchctl(_ args: [String], log: (@Sendable (String) -> Void)?) throws -> ProcessLaunchResult {
+        let result = try sshLauncher.run(
+            executable: "/bin/launchctl",
+            arguments: args,
+            timeout: 8)
+        emit(result, to: log)
+        guard result.exitCode == 0 else {
+            throw ServiceCommandError.launchctlFailed(
+                code: result.exitCode,
+                stderr: result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return result
+    }
+
+    private func withLifecycleLogging(_ log: (@Sendable (String) -> Void)?,
+                                      _ body: () throws -> Void) throws {
+        let previous = lifecycle.delegate
+        let sink = log.map { LifecycleLogSink($0) }
+        lifecycle.delegate = sink
+        defer { lifecycle.delegate = previous }
+        try body()
+    }
+
+    private func emit(_ result: ProcessLaunchResult,
+                      to log: (@Sendable (String) -> Void)?) {
+        guard let log else { return }
+        for line in result.stdout.logLines {
+            log(line)
+        }
+        for line in result.stderr.logLines {
+            log("stderr: \(line)")
+        }
+        log("exit \(result.exitCode)")
     }
 
     /// Real URL opener — replaced in tests by an injectable closure.
@@ -156,6 +208,41 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
         #else
         return false
         #endif
+    }
+}
+
+private final class LifecycleLogSink: LifecycleOutputDelegate, @unchecked Sendable {
+    private let sink: @Sendable (String) -> Void
+
+    init(_ sink: @escaping @Sendable (String) -> Void) {
+        self.sink = sink
+    }
+
+    func lifecycle(_ commands: LifecycleCommands, didEmit line: String) {
+        sink(line)
+    }
+}
+
+private extension ServiceCommand {
+    var displayName: String {
+        switch self {
+        case .openURL(let url): return "open \(url.absoluteString)"
+        case .sshRestartUnit(let host, let unit): return "ssh \(host) systemctl --user restart \(unit)"
+        case .startVLLM: return "start vLLM"
+        case .stopVLLM: return "stop vLLM"
+        case .selectModel(let profile): return "select model \(profile.map(String.init) ?? "auto")"
+        case .startLocalAgent(let label): return "launchctl start \(label)"
+        case .stopLocalAgent(let label): return "launchctl stop \(label)"
+        case .restartLocalAgent(let label): return "launchctl restart \(label)"
+        }
+    }
+}
+
+private extension String {
+    var logLines: [String] {
+        split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            .map(String.init)
+            .filter { !$0.isEmpty }
     }
 }
 

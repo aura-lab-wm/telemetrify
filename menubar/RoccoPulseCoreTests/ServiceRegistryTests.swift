@@ -10,6 +10,44 @@ final class ServiceRegistryTests: XCTestCase {
         XCTAssertTrue(ids.contains("vllm"))
     }
 
+    func testBuiltinsIncludeLocalOllama() {
+        // Local Mac-side Ollama (Ollama.app, :11434) gets a built-in row —
+        // distinct from any REMOTE ollama the rocco-agent discovers on the
+        // L40S box, which still flows in via merging(discovered:).
+        let builtins = ServiceRegistry.builtins()
+        guard let ollama = builtins.first(where: { $0.id == "ollama-local" }) else {
+            return XCTFail("ollama-local must be a built-in row")
+        }
+        XCTAssertEqual(ollama.kind,
+            .http(url: URL(string: "http://127.0.0.1:11434/api/version")!,
+                  summaryKey: "version"))
+        // Down/unknown → Start launches Ollama.app via the existing
+        // .openURL command (NSWorkspace.open handles app bundles).
+        let expectedStart = ServiceCommand.openURL(
+            URL(fileURLWithPath: "/Applications/Ollama.app"))
+        XCTAssertEqual(ollama.action(for: .down)?.label, "Start")
+        XCTAssertEqual(ollama.action(for: .down)?.command, expectedStart)
+        XCTAssertEqual(ollama.action(for: .unknown)?.command, expectedStart)
+        XCTAssertNil(ollama.action(for: .up),
+            "no button next to a healthy local ollama to fat-finger")
+    }
+
+    func testMergingStillSurfacesRemoteOllamaDespiteLocalBuiltin() {
+        // The built-in is the LOCAL Mac instance; a discovered ollama on
+        // rocco is a different machine and must not be deduped away.
+        let discovered: [RoccoStatus.Service] = [
+            RoccoStatus.Service(port: 11434, proc: "ollama", pid: 9999,
+                                kind: "ollama", command: "ollama serve",
+                                user: "amastropaolo"),
+        ]
+        let result = ServiceRegistry(services: ServiceRegistry.builtins())
+            .merging(discovered: discovered)
+        let ids = result.known.services.map { $0.id }
+        XCTAssertTrue(ids.contains("ollama-local"))
+        XCTAssertTrue(ids.contains("discovered-11434-ollama-9999"),
+            "remote ollama must still surface alongside the local built-in")
+    }
+
     func testMergingDedupesBuiltinKinds() {
         // The on-the-wire snapshot will surface a discovered vllm row at
         // port 8000 from `ss -tlnp`. We DON'T want it duplicated next to

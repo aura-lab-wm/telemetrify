@@ -157,6 +157,30 @@ public struct ServiceRegistry: Sendable {
             ]
         ))
 
+        // LOCAL Mac-side Ollama (Ollama.app serving on :11434). Distinct
+        // from any remote ollama the rocco-agent discovers — that one
+        // still arrives via merging(discovered:). /api/version returns
+        // {"version":"0.24.0"} → summaryKey "version" → row reads "0.24.0".
+        if let versionURL = URL(string: "http://127.0.0.1:11434/api/version") {
+            out.append(Service(
+                id: "ollama-local",
+                displayName: "ollama (mac)",
+                kind: .http(url: versionURL, summaryKey: "version"),
+                clientURL: nil,
+                iconSymbol: "circle.hexagongrid",
+                actions: [
+                    // Down/unknown → launch Ollama.app. Reuses .openURL:
+                    // NSWorkspace.open on an app-bundle file URL launches
+                    // it — no new ServiceCommand case needed. No button
+                    // when up (same fat-finger rule as rocco-agent).
+                    ServiceAction(label: "Start",
+                                  showWhen: [.down, .unknown],
+                                  command: .openURL(
+                                    URL(fileURLWithPath: "/Applications/Ollama.app"))),
+                ]
+            ))
+        }
+
         return out
     }
 

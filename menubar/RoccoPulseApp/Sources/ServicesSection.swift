@@ -285,12 +285,13 @@ private struct ConfidenceChip: View {
 private struct ServiceRowView: View {
     private enum Metrics {
         static let dot: CGFloat = 10
-        static let icon: CGFloat = 26
-        static let name: CGFloat = 124
-        static let actions: CGFloat = 120
+        static let icon: CGFloat = 22
+        static let name: CGFloat = 108
+        static let spotlight: CGFloat = 34   // in-card, ALWAYS reserved
+        static let gutter: CGFloat = 44      // outside-card action column
         static let rowHeight: CGFloat = 32
-        static let columnGap: CGFloat = 10
-        static let detailIndent: CGFloat = dot + columnGap + icon + columnGap + name + columnGap
+        static let columnGap: CGFloat = 8
+        static let detailIndent: CGFloat = dot + columnGap + icon + columnGap
     }
 
     /// vLLM-only: the pinnable model configs + current selection, plus a
@@ -313,6 +314,19 @@ private struct ServiceRowView: View {
     let onInspectLogs: () -> Void
 
     var body: some View {
+        // Card + gutter are SIBLINGS. The lifecycle action never enters
+        // the card, so the card's frame is identical whether the service
+        // is up, down, or transitioning — that's the whole point.
+        HStack(alignment: .center, spacing: 8) {
+            card
+            actionGutter
+                .frame(width: Metrics.gutter)
+        }
+        .padding(.vertical, 2)
+        .help(row.status.error ?? row.service.displayName)
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 4) {
             primaryRow
             if hasSecondaryDetail {
@@ -322,8 +336,13 @@ private struct ServiceRowView: View {
                 ServiceLogStrip(lines: logLines, isLive: inFlight)
             }
         }
-        .padding(.vertical, 3)
-        .help(row.status.error ?? row.service.displayName)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
     }
 
     private var primaryRow: some View {
@@ -334,10 +353,64 @@ private struct ServiceRowView: View {
                 .frame(width: Metrics.name, alignment: .leading)
             summaryText
                 .frame(maxWidth: .infinity, alignment: .leading)
-            controlCluster
-                .frame(width: Metrics.actions, alignment: .trailing)
+            spotlightButton   // pinned trailing IN-CARD, same x every row
         }
         .frame(minHeight: Metrics.rowHeight)
+    }
+
+    /// The log-inspect button. When a service has no log files we still
+    /// reserve the exact same width so the trailing edge never drifts.
+    @ViewBuilder
+    private var spotlightButton: some View {
+        if row.service.logFiles.isEmpty {
+            Color.clear
+                .frame(width: Metrics.spotlight, height: 22)
+        } else {
+            Button { onInspectLogs() } label: {
+                Image(systemName: "text.magnifyingglass")
+                    .font(.system(size: 13, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(width: Metrics.spotlight - 6, height: 22)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .frame(width: Metrics.spotlight)
+            .help("Inspect logs")
+            .accessibilityLabel("Inspect \(row.service.displayName) logs")
+        }
+    }
+
+    /// Fixed-width lifecycle column OUTSIDE the card. Icon-only.
+    /// Switches on the Core-tested GutterPresentation so this view has
+    /// zero mapping logic of its own.
+    @ViewBuilder
+    private var actionGutter: some View {
+        let currentAction = row.service.action(for: row.status.state)
+        switch GutterPresentation.make(action: currentAction, inFlight: inFlight) {
+        case .busy:
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 32, height: 32)
+        case .placeholder:
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10),
+                              style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+        case .action(let symbol, let verb, let isDestructive):
+            Button {
+                if let currentAction { onAction(currentAction) }
+            } label: {
+                Image(systemName: symbol)
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(isDestructive ? .red : .accentColor)
+            .help("\(verb) \(row.service.displayName)")
+            .accessibilityLabel("\(verb) \(row.service.displayName)")
+        }
     }
 
     private var secondaryDetailRow: some View {
@@ -426,35 +499,6 @@ private struct ServiceRowView: View {
         }
     }
 
-    private var controlCluster: some View {
-        HStack(spacing: 6) {
-            if !row.service.logFiles.isEmpty {
-                Button { onInspectLogs() } label: {
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 14, weight: .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .frame(width: 28, height: 22)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .frame(width: 40)
-                .help("Inspect logs")
-            }
-            if inFlight {
-                ProgressView()
-                    .controlSize(.mini)
-                    .frame(width: 74)
-            } else if let action = row.service.action(for: row.status.state) {
-                Button(action.label) { onAction(action) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(buttonTint(for: action))
-                    .frame(width: 74)
-            }
-        }
-        .frame(minHeight: Metrics.rowHeight, alignment: .trailing)
-    }
-
     /// Dropdown that lets the operator pin which model vLLM serves (or Auto).
     /// Picking one writes the override on Rocco and recycles vLLM, so the
     /// row goes in-flight for ~75s while the new weights load.
@@ -517,19 +561,6 @@ private struct ServiceRowView: View {
         }
     }
 
-    /// Subtle button color so destructive actions read distinct from
-    /// recoveries — Stop reads slightly muted, Start/Restart accent-tinted.
-    private func buttonTint(for action: ServiceAction) -> Color {
-        switch action.command {
-        case .stopVLLM, .stopLocalAgent:    return .secondary
-        case .startVLLM,
-             .sshRestartUnit,
-             .selectModel,
-             .startLocalAgent,
-             .restartLocalAgent:            return .accentColor
-        case .openURL:                      return .primary
-        }
-    }
 }
 
 private struct ServiceLogStrip: View {

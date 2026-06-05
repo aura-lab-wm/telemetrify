@@ -543,10 +543,16 @@ private struct ServiceRowView: View {
                     if let sel = mp.selected,
                        let m = mp.available.first(where: { $0.profile == sel }),
                        let asset = ModelIcon.asset(for: m.model) {
+                        // Light circular plate behind the avatar — vendor
+                        // logos are designed for light backgrounds and
+                        // disappear straight onto the tinted capsule.
                         Image(asset)
                             .resizable()
-                            .frame(width: 12, height: 12)
-                            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                            .scaledToFit()
+                            .frame(width: 13, height: 13)
+                            .padding(1.5)
+                            .background(Circle().fill(.white.opacity(0.92)))
+                            .clipShape(Circle())
                     }
                     Text(currentModelShortLabel(mp))
                         .lineLimit(1)

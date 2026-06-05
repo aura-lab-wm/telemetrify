@@ -44,11 +44,11 @@ private struct KPIStrip: View {
     private func kpi(label: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label)
-                .font(.system(size: 10, design: .monospaced))
+                .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .tracking(0.5)
             Text(value)
-                .font(.system(.callout, design: .monospaced).bold())
+                .font(.system(.body, design: .monospaced).bold())
                 .foregroundStyle(color)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -74,21 +74,21 @@ private struct GPUCell: View {
                 .frame(width: 40, height: 40)
                 .overlay(
                     Text("\(gpu.utilPct)")
-                        .font(.system(size: 11, design: .monospaced).bold())
+                        .font(.system(size: 13, design: .monospaced).bold())
                 )
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text("GPU \(gpu.idx)")
-                        .font(.caption.bold())
+                        .font(.callout.bold())
                     Spacer(minLength: 0)
                     Text("\(gpu.tempC)°")
-                        .font(.system(.caption2, design: .monospaced))
+                        .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(tempColor(gpu.tempC))
                 }
                 Sparkline(samples: memSamples)
                     .frame(height: 12)
                 Text("mem \(Int(gpu.memPctUsed))%")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
         }

@@ -17,9 +17,6 @@ import AIPulseCore
 struct StatusView: View {
     @EnvironmentObject var store: StatusStore
     @State private var selectedPane: PulsePane = .rocco
-    /// Drives the live badge's sonar ring (flipped once in onAppear;
-    /// the repeatForever animation does the rest).
-    @State private var badgePulse = false
     // Lifecycle state (isPerformingLifecycle, lifecycleNotice,
     // LifecycleNotice) was deleted in the de-dupe pass — the Services
     // section now owns vLLM Start/Stop and has its own self-dismissing
@@ -206,9 +203,8 @@ struct StatusView: View {
     // MARK: - Footer
 
     /// Three evenly-spaced elements, one fixed row: Refresh · live badge ·
-    /// Quit. Ghost buttons (quiet until hovered), a sonar-pulsing LIVE
-    /// pill with a soft glow, and a 360° spin on Refresh — motion only
-    /// where it MEANS something (data flowing, refresh firing).
+    /// Quit. Ghost buttons (quiet until hovered) and a glowing LIVE pill
+    /// — static by design; the menubar title carries the live data now.
     private var footer: some View {
         HStack(spacing: 12) {
             FooterGhostButton(symbol: "arrow.clockwise", title: "Refresh",
@@ -226,31 +222,17 @@ struct StatusView: View {
         .font(.caption)
     }
 
-    /// Stream health at a glance: sonar-pulsing green "LIVE · 2s" while
-    /// push frames are flowing, static orange "POLLING · 15s" when the
-    /// watchdog has taken over. The pulse ring + glow only render in the
-    /// live state — orange stays still so trouble reads as "stopped".
+    /// Stream health at a glance: green "LIVE · 2s" (soft glow) while
+    /// push frames flow, orange "POLLING · 15s" when the watchdog has
+    /// taken over.
     private var liveBadge: some View {
         let live = store.isLive()
         let tint: Color = live ? .green : .orange
         return HStack(spacing: 6) {
-            ZStack {
-                if live {
-                    Circle()
-                        .stroke(tint.opacity(0.6), lineWidth: 1.5)
-                        .frame(width: 7, height: 7)
-                        .scaleEffect(badgePulse ? 2.1 : 1.0)
-                        .opacity(badgePulse ? 0 : 0.9)
-                        .animation(.easeOut(duration: 1.4)
-                            .repeatForever(autoreverses: false),
-                            value: badgePulse)
-                }
-                Circle()
-                    .fill(tint)
-                    .frame(width: 7, height: 7)
-                    .shadow(color: live ? tint.opacity(0.8) : .clear, radius: 3)
-            }
-            .frame(width: 16, height: 16)
+            Circle()
+                .fill(tint)
+                .frame(width: 7, height: 7)
+                .shadow(color: live ? tint.opacity(0.8) : .clear, radius: 3)
             Text(live ? "LIVE" : "POLLING")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .tracking(1.4)
@@ -264,7 +246,6 @@ struct StatusView: View {
         .background(Capsule().fill(tint.opacity(0.10)))
         .overlay(Capsule().strokeBorder(tint.opacity(0.25), lineWidth: 1))
         .shadow(color: live ? tint.opacity(0.25) : .clear, radius: 7)
-        .onAppear { badgePulse = true }
         .help(live
               ? "Receiving pushed snapshots over the persistent SSH stream"
               : "Stream down — falling back to 15s polling while it reconnects")

@@ -28,6 +28,20 @@ struct MenuBarIcon: View {
             errorKind: store.lastErrorKind
         )
         let vllmUp = store.snapshot?.vllm.running == true
+        HStack(spacing: 4) {
+            mark(state: state, vllmUp: vllmUp)
+            // Dynamic data next to the mark: serving model + avg util
+            // ("WRN-2-70B 97%"), bare util when idle, nothing when the
+            // snapshot can't be trusted. Logic lives in Core (tested).
+            if let title = MenuBarTitle.make(snapshot: store.snapshot, now: Date()) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mark(state: IconState, vllmUp: Bool) -> some View {
         AIPulseMark(
             pulseTint: dotColor(for: state),
             pulseDotActive: state == .fresh || state == .agentMissing,

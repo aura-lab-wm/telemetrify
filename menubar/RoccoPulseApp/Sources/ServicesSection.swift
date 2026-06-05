@@ -283,6 +283,14 @@ private struct ConfidenceChip: View {
 }
 
 private struct ServiceRowView: View {
+    private enum Metrics {
+        static let dot: CGFloat = 10
+        static let icon: CGFloat = 26
+        static let name: CGFloat = 166
+        static let actions: CGFloat = 142
+        static let rowHeight: CGFloat = 32
+    }
+
     /// vLLM-only: the pinnable model configs + current selection, plus a
     /// handler invoked when the operator picks one (nil = Auto). Rendered
     /// as a dropdown in the row; nil for every non-vllm service.
@@ -317,36 +325,38 @@ private struct ServiceRowView: View {
     }
 
     private var regularRow: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .center, spacing: 10) {
             statusDot
             serviceIcon
             serviceName
-                .frame(minWidth: 82, alignment: .leading)
+                .frame(width: Metrics.name, alignment: .leading)
             summaryCluster
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Spacer(minLength: 0)
             controlCluster
+                .frame(width: Metrics.actions, alignment: .trailing)
         }
+        .frame(minHeight: Metrics.rowHeight)
     }
 
     private var compactRow: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
                 statusDot
                 serviceIcon
                 serviceName
                     .frame(maxWidth: .infinity, alignment: .leading)
                 controlCluster
             }
+            .frame(minHeight: Metrics.rowHeight)
             summaryCluster
-                .padding(.leading, 42)
+                .padding(.leading, Metrics.dot + 10 + Metrics.icon + 10)
         }
     }
 
     private var statusDot: some View {
         Circle()
             .fill(inFlight ? Color.accentColor : stateColor)
-            .frame(width: 10, height: 10)
+            .frame(width: Metrics.dot, height: Metrics.dot)
             .opacity(inFlight ? 0.55 : 1.0)
     }
 
@@ -354,7 +364,8 @@ private struct ServiceRowView: View {
         Image(systemName: row.service.iconSymbol)
             .font(.system(size: 17, weight: .medium))
             .foregroundStyle(.secondary)
-            .frame(width: 24)
+            .symbolRenderingMode(.hierarchical)
+            .frame(width: Metrics.icon, height: Metrics.rowHeight)
     }
 
     @ViewBuilder
@@ -434,11 +445,15 @@ private struct ServiceRowView: View {
             if !row.service.logFiles.isEmpty {
                 Button { onInspectLogs() } label: {
                     Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 30, height: 24)
+                        .font(.system(size: 16, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .frame(width: 34, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color.primary.opacity(0.11))
+                        )
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.plain)
                 .help("Inspect logs")
             }
             if inFlight {
@@ -448,10 +463,10 @@ private struct ServiceRowView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(buttonTint(for: action))
-                    .frame(minWidth: 64)
+                    .frame(width: 74)
             }
         }
-        .fixedSize()
+        .frame(minHeight: Metrics.rowHeight, alignment: .trailing)
     }
 
     /// Dropdown that lets the operator pin which model vLLM serves (or Auto).

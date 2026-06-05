@@ -55,7 +55,7 @@ data/vapid_public.pem
 
 # macOS menubar app (Swift) — generated artifacts
 menubar/build/
-menubar/rocco-pulse.xcodeproj/
+menubar/ai-pulse.xcodeproj/
 menubar/**/*.xcuserstate
 menubar/**/xcuserdata/
 menubar/**/.swiftpm/

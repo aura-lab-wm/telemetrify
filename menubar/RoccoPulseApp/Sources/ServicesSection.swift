@@ -516,18 +516,38 @@ private struct ServiceRowView: View {
             Menu {
                 Button { mp.onSelect(nil) } label: {
                     Text((mp.selected == nil ? "✓ " : "   ") + "Auto (by free GPUs)")
+                        .font(.system(size: 12))
                 }
                 Divider()
                 ForEach(mp.available) { m in
                     Button { mp.onSelect(m.profile) } label: {
-                        Text((mp.selected == m.profile ? "✓ " : "   ")
-                             + m.label
-                             + (m.downloaded ? "" : "  (not downloaded)"))
+                        // Vendor's ORIGINAL avatar (HF org) before the name.
+                        // 12pt is a polite request — AppKit menus may keep
+                        // the system menu font.
+                        if let asset = ModelIcon.asset(for: m.model) {
+                            Label {
+                                Text(menuTitle(for: m, selected: mp.selected))
+                                    .font(.system(size: 12))
+                            } icon: {
+                                Image(asset)
+                            }
+                        } else {
+                            Text(menuTitle(for: m, selected: mp.selected))
+                                .font(.system(size: 12))
+                        }
                     }
                     .disabled(!m.downloaded)
                 }
             } label: {
                 HStack(spacing: 3) {
+                    if let sel = mp.selected,
+                       let m = mp.available.first(where: { $0.profile == sel }),
+                       let asset = ModelIcon.asset(for: m.model) {
+                        Image(asset)
+                            .resizable()
+                            .frame(width: 12, height: 12)
+                            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                    }
                     Text(currentModelShortLabel(mp))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -550,6 +570,14 @@ private struct ServiceRowView: View {
             .help("Choose which model vLLM serves on Rocco")
             .accessibilityLabel("Model: \(currentModelShortLabel(mp))")
         }
+    }
+
+    /// One menu row's title: selection check, agent-provided label, and
+    /// the not-downloaded marker.
+    private func menuTitle(for m: RoccoStatus.Models.Available, selected: Int?) -> String {
+        (selected == m.profile ? "✓ " : "   ")
+            + m.label
+            + (m.downloaded ? "" : "  (not downloaded)")
     }
 
     /// Chip resting label: "Auto", or the pinned model via the Core-tested

@@ -175,6 +175,45 @@ public struct ServiceRegistry: Sendable {
             ))
         }
 
+        if let gwHealth = URL(string: "http://127.0.0.1:4000/health/liveliness") {
+            out.append(Service(
+                id: "gateway",
+                displayName: "gateway (:4000)",
+                kind: .http(url: gwHealth, summaryKey: nil),
+                clientURL: nil,
+                iconSymbol: "arrow.triangle.branch",
+                scope: .local,
+                logFiles: [
+                    Service.LogFile(
+                        id: "gateway-litellm-err",
+                        label: "litellm",
+                        location: .local(path: "/Users/amastro/.config/rocco/logs/litellm.err")),
+                    Service.LogFile(
+                        id: "gateway-shim-err",
+                        label: "shim",
+                        location: .local(path: "/Users/amastro/.config/rocco/logs/shim.err")),
+                ],
+                actions: [
+                    // LiteLLM proxy is the row's lifecycle; the shim rides
+                    // the context menu (it rarely needs touching alone).
+                    ServiceAction(label: "Start",
+                                  showWhen: [.down, .unknown],
+                                  command: .startLocalAgent(label: "com.rocco.litellm-gateway")),
+                    ServiceAction(label: "Stop",
+                                  showWhen: [.up],
+                                  command: .stopLocalAgent(label: "com.rocco.litellm-gateway")),
+                    ServiceAction(label: "Restart",
+                                  showWhen: [.up],
+                                  command: .restartLocalAgent(label: "com.rocco.litellm-gateway"),
+                                  isPrimary: false),
+                    ServiceAction(label: "Restart shim",
+                                  showWhen: [.up, .down, .unknown],
+                                  command: .restartLocalAgent(label: "com.rocco.switch-shim"),
+                                  isPrimary: false),
+                ]
+            ))
+        }
+
         out.append(Service(
             id: "rocco-agent",
             displayName: "rocco-agent",

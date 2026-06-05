@@ -15,6 +15,7 @@ struct ServicesSection: View {
 
     @EnvironmentObject var store: StatusStore
     @StateObject private var model = ServicesViewModel()
+    @StateObject private var gatewayStore = GatewayPickerStore()
     let scope: Scope
 
     init(scope: Scope = .rocco) {
@@ -49,6 +50,7 @@ struct ServicesSection: View {
                         inFlight: model.inFlight.contains(row.service.id),
                         logLines: model.actionLogs[row.service.id] ?? [],
                         modelPicker: modelPicker(for: row.service),
+                        gatewayPicker: gatewayPicker(for: row.service),
                         trainingHint: trainingHint(for: row.service)
                     ) { action in
                         Task { await model.perform(action: action, on: row.service) }
@@ -85,6 +87,7 @@ struct ServicesSection: View {
         .task(id: store.lastFetchedAt) {
             model.bind(store: store)   // so perform() can trigger refreshes
             await model.refresh(snapshot: store.snapshot, scope: scope.serviceScope)
+            await gatewayStore.refresh()
         }
     }
 
@@ -108,6 +111,23 @@ struct ServicesSection: View {
                 showWhen: [.up, .down, .unknown],
                 command: .selectModel(profile: profile))
             Task { await model.perform(action: action, on: service) }
+        }
+    }
+
+    /// Build the gateway-model picker for the gateway row: every model the
+    /// LiteLLM gateway can route (rocco GPU / local ollama / anthropic).
+    /// Picking writes the default model for NEW claude sessions and, for
+    /// rocco models, pre-warms the GPU tier through the shim's /v1/switch.
+    private func gatewayPicker(for service: Service) -> ServiceRowView.GatewayPicker? {
+        guard service.id == "gateway", !gatewayStore.models.isEmpty else { return nil }
+        return ServiceRowView.GatewayPicker(
+            models: gatewayStore.models,
+            selectedId: gatewayStore.selectedId
+        ) { picked in
+            Task {
+                let result = await gatewayStore.select(picked)
+                model.notify(result.message, isError: result.isError)
+            }
         }
     }
 
@@ -303,10 +323,21 @@ private struct ServiceRowView: View {
         let onSelect: (Int?) -> Void
     }
 
+    /// gateway-only: the LiteLLM-routable models grouped by backend, plus the
+    /// operator's current default for new claude sessions. Same chip styling
+    /// as the vllm ModelPicker; selection semantics differ (default model +
+    /// rocco pre-warm, not a vLLM recycle), hence the separate type.
+    struct GatewayPicker {
+        let models: [GatewayModel]
+        let selectedId: String?       // current ~/.claude/settings.json model
+        let onSelect: (GatewayModel) -> Void
+    }
+
     let row: ServicesViewModel.Row
     let inFlight: Bool
     let logLines: [String]
     var modelPicker: ModelPicker? = nil
+    var gatewayPicker: GatewayPicker? = nil
     /// vLLM-only: a short note (e.g. "capped by training") explaining why Auto
     /// landed on a smaller model. nil hides it.
     var trainingHint: String? = nil
@@ -357,6 +388,7 @@ private struct ServiceRowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             trainingHintView
             modelChipView
+            gatewayChipView
             spotlightButton   // pinned trailing IN-CARD, same x every row
         }
         .frame(minHeight: Metrics.rowHeight)
@@ -580,6 +612,55 @@ private struct ServiceRowView: View {
             .help("Choose which model vLLM serves on Rocco")
             .accessibilityLabel("Model: \(currentModelShortLabel(mp))")
         }
+    }
+
+    /// Gateway chip: same Option B capsule as the vllm model chip, but the
+    /// menu is grouped by backend and selection writes the claude default.
+    @ViewBuilder
+    private var gatewayChipView: some View {
+        if !inFlight, let gp = gatewayPicker, !gp.models.isEmpty {
+            Menu {
+                ForEach(GatewayModelGroup.allCases, id: \.self) { group in
+                    let items = gp.models.filter { $0.group == group }
+                    if !items.isEmpty {
+                        Section(group.rawValue) {
+                            ForEach(items) { m in
+                                Button { gp.onSelect(m) } label: {
+                                    Text((gp.selectedId == m.id ? "✓ " : "   ") + m.displayName)
+                                        .font(.system(size: 12))
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(gatewayChipLabel(gp))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+            .frame(maxWidth: 190)
+            .layoutPriority(1)
+            .help("Default model for new claude sessions (rocco picks pre-warm the GPU tier)")
+            .accessibilityLabel("Claude model: \(gatewayChipLabel(gp))")
+        }
+    }
+
+    /// Chip resting label: the operator's current default (stripped form),
+    /// or "model…" before any default exists.
+    private func gatewayChipLabel(_ gp: GatewayPicker) -> String {
+        guard let sel = gp.selectedId else { return "model…" }
+        return gp.models.first(where: { $0.id == sel })?.displayName ?? sel
     }
 
     /// One menu row's title: selection check, agent-provided label, and
@@ -870,6 +951,12 @@ final class ServicesViewModel: ObservableObject {
     func dismissToast() {
         toastDismissTask?.cancel()
         toast = nil
+    }
+
+    /// External entry for non-ServiceCommand flows (e.g. the gateway model
+    /// picker) to surface a toast with the standard auto-dismiss behavior.
+    func notify(_ message: String, isError: Bool) {
+        showToast(Toast(message: message, isError: isError))
     }
 
     private func showToast(_ t: Toast) {

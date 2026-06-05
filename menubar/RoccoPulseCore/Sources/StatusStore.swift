@@ -22,6 +22,7 @@ public enum PollInterval: Int, CaseIterable, Identifiable, Sendable {
 @MainActor
 public final class StatusStore: ObservableObject {
     @Published public private(set) var snapshot: RoccoStatus?
+    @Published public private(set) var gpuHistory = GPUHistory()
     @Published public private(set) var lastError: String?
     @Published public private(set) var lastErrorKind: SSHProbeErrorKind?
     @Published public private(set) var lastFetchedAt: Date?
@@ -67,6 +68,7 @@ public final class StatusStore: ObservableObject {
         switch result {
         case .success(let status):
             self.snapshot = status
+            self.gpuHistory.append(gpus: status.gpus)
             self.lastError = nil
             self.lastErrorKind = nil
             persist(status: status)

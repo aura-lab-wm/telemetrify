@@ -17,6 +17,9 @@ import AIPulseCore
 struct StatusView: View {
     @EnvironmentObject var store: StatusStore
     @State private var selectedPane: PulsePane = .rocco
+    /// Drives the live badge's sonar ring (flipped once in onAppear;
+    /// the repeatForever animation does the rest).
+    @State private var badgePulse = false
     // Lifecycle state (isPerformingLifecycle, lifecycleNotice,
     // LifecycleNotice) was deleted in the de-dupe pass — the Services
     // section now owns vLLM Start/Stop and has its own self-dismissing
@@ -203,45 +206,65 @@ struct StatusView: View {
     // MARK: - Footer
 
     /// Three evenly-spaced elements, one fixed row: Refresh · live badge ·
-    /// Quit. The Poll picker is gone — data arrives over the push stream
-    /// now and the 15s poll is just the watchdog, so the cadence isn't an
-    /// operator decision anymore. (ViewThatFits is gone too: its
-    /// row↔stack re-layout was one of the flicker sources.)
+    /// Quit. Ghost buttons (quiet until hovered), a sonar-pulsing LIVE
+    /// pill with a soft glow, and a 360° spin on Refresh — motion only
+    /// where it MEANS something (data flowing, refresh firing).
     private var footer: some View {
         HStack(spacing: 12) {
-            Button {
+            FooterGhostButton(symbol: "arrow.clockwise", title: "Refresh",
+                              spinsOnTap: true) {
                 Task { await store.refresh() }
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
-                    .labelStyle(.titleAndIcon)
             }
-            .controlSize(.small)
             Spacer(minLength: 8)
             liveBadge
             Spacer(minLength: 8)
-            Button("Quit") { NSApp.terminate(nil) }
-                .controlSize(.small)
+            FooterGhostButton(symbol: "power", title: "Quit",
+                              hoverTint: .red) {
+                NSApp.terminate(nil)
+            }
         }
         .font(.caption)
     }
 
-    /// Stream health at a glance: green "Live · 2s" while push frames are
-    /// flowing, orange "Polling · 15s" when the watchdog has taken over.
+    /// Stream health at a glance: sonar-pulsing green "LIVE · 2s" while
+    /// push frames are flowing, static orange "POLLING · 15s" when the
+    /// watchdog has taken over. The pulse ring + glow only render in the
+    /// live state — orange stays still so trouble reads as "stopped".
     private var liveBadge: some View {
         let live = store.isLive()
-        return HStack(spacing: 5) {
-            Circle()
-                .fill(live ? Color.green : Color.orange)
-                .frame(width: 7, height: 7)
-            Text(live ? "Live · 2s" : "Polling · 15s")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
+        let tint: Color = live ? .green : .orange
+        return HStack(spacing: 6) {
+            ZStack {
+                if live {
+                    Circle()
+                        .stroke(tint.opacity(0.6), lineWidth: 1.5)
+                        .frame(width: 7, height: 7)
+                        .scaleEffect(badgePulse ? 2.1 : 1.0)
+                        .opacity(badgePulse ? 0 : 0.9)
+                        .animation(.easeOut(duration: 1.4)
+                            .repeatForever(autoreverses: false),
+                            value: badgePulse)
+                }
+                Circle()
+                    .fill(tint)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: live ? tint.opacity(0.8) : .clear, radius: 3)
+            }
+            .frame(width: 16, height: 16)
+            Text(live ? "LIVE" : "POLLING")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(tint)
+            Text(live ? "2s" : "15s")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 9)
+        .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(
-            Capsule().fill((live ? Color.green : Color.orange).opacity(0.10))
-        )
+        .background(Capsule().fill(tint.opacity(0.10)))
+        .overlay(Capsule().strokeBorder(tint.opacity(0.25), lineWidth: 1))
+        .shadow(color: live ? tint.opacity(0.25) : .clear, radius: 7)
+        .onAppear { badgePulse = true }
         .help(live
               ? "Receiving pushed snapshots over the persistent SSH stream"
               : "Stream down — falling back to 15s polling while it reconnects")
@@ -325,5 +348,48 @@ struct StatusView: View {
                     .textSelection(.enabled)
             }
         }
+    }
+}
+
+/// Quiet-until-hovered footer button: ghost fill that brightens on
+/// hover, optional tint shift (Quit goes red — destructive intent reads
+/// before the click), and an optional 360° icon spin on tap (Refresh).
+private struct FooterGhostButton: View {
+    let symbol: String
+    let title: String
+    var spinsOnTap = false
+    var hoverTint: Color = .primary
+    let action: () -> Void
+
+    @State private var hovering = false
+    @State private var spinDegrees = 0.0
+
+    var body: some View {
+        Button {
+            if spinsOnTap {
+                withAnimation(.easeOut(duration: 0.6)) { spinDegrees += 360 }
+            }
+            action()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .rotationEffect(.degrees(spinDegrees))
+                Text(title)
+                    .font(.callout.weight(.medium))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.primary.opacity(hovering ? 0.14 : 0.06))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(hovering ? AnyShapeStyle(hoverTint) : AnyShapeStyle(.secondary))
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovering)
+        .accessibilityLabel(title)
     }
 }

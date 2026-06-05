@@ -701,7 +701,13 @@ final class ServicesViewModel: ObservableObject {
     /// until the next 15-second poll fires.
     @Published private(set) var inFlight: Set<String> = []
 
-    private let prober = ServiceProber()
+    /// SHARED across pane switches: each RoccoPulse↔Local-Pulse flip
+    /// creates a fresh ServicesViewModel, and a per-instance prober
+    /// meant a cold cache — every flip re-fired the ~1s SSH probe and
+    /// the toggle felt slow. One shared prober keeps the 5s cache warm
+    /// so a flip renders from cache instantly.
+    private static let sharedProber = ServiceProber()
+    private let prober = ServicesViewModel.sharedProber
     private let runner: ServiceCommandRunner
     private var toastDismissTask: Task<Void, Never>?
     private weak var store: StatusStore?
@@ -733,12 +739,24 @@ final class ServicesViewModel: ObservableObject {
         }
         unknownPorts = scope == .rocco ? result.unknown : []
 
-        var newRows: [Row] = []
-        for svc in services {
-            let status = await prober.probe(svc, snapshot: snapshot)
-            newRows.append(Row(service: svc, status: status))
+        // Probe in PARALLEL — the wait is the slowest single probe
+        // (~1s SSH worst-case), not the sum of all of them. Results
+        // reassemble in registry order so rows never jump around.
+        let prober = self.prober
+        let snap = snapshot
+        let statuses = await withTaskGroup(of: (Int, ServiceStatus).self,
+                                           returning: [ServiceStatus?].self) { group in
+            for (i, svc) in services.enumerated() {
+                group.addTask { (i, await prober.probe(svc, snapshot: snap)) }
+            }
+            var out = [ServiceStatus?](repeating: nil, count: services.count)
+            for await (i, status) in group { out[i] = status }
+            return out
         }
-        rows = newRows
+        rows = zip(services, statuses).map { svc, status in
+            Row(service: svc,
+                status: status ?? ServiceStatus(state: .unknown, summary: "checking…"))
+        }
     }
 
     /// Run the chosen action with immediate visual feedback. Three

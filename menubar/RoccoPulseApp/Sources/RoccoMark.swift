@@ -57,8 +57,8 @@ struct RoccoMark: View {
                 }
             }
             .accessibilityLabel(vllmRunning
-                ? "Rocco Pulse status — vLLM up"
-                : "Rocco Pulse status")
+                ? "AI-Pulse status — vLLM up"
+                : "AI-Pulse status")
     }
 
     /// The dot OR the bolt — picked per `vllmRunning`. The bolt is a

@@ -35,8 +35,8 @@ targets:
       properties:
         LSUIElement: true
         LSMinimumSystemVersion: "14.0"
-        CFBundleName: "Rocco Pulse"
-        CFBundleDisplayName: "Rocco Pulse"
+        CFBundleName: "AI-Pulse"
+        CFBundleDisplayName: "AI-Pulse"
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         NSHumanReadableCopyright: "© 2026 Antonio Mastropaolo"

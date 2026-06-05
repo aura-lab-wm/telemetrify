@@ -8,11 +8,21 @@ import RoccoPulseCore
 /// always wins for http-kind services because the URL is a valid recovery
 /// path regardless of status.
 struct ServicesSection: View {
+    enum Scope {
+        case rocco
+        case local
+    }
+
     @EnvironmentObject var store: StatusStore
     @StateObject private var model = ServicesViewModel()
+    let scope: Scope
+
+    init(scope: Scope = .rocco) {
+        self.scope = scope
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text("SERVICES")
                     .font(.system(.caption2, design: .monospaced))
@@ -32,7 +42,7 @@ struct ServicesSection: View {
             // VStack doesn't pin a minimum. The Unknown disclosure
             // below DOES need scrolling because it can have dozens
             // of rows.
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 ForEach(model.rows) { row in
                     ServiceRowView(
                         row: row,
@@ -42,6 +52,8 @@ struct ServicesSection: View {
                         trainingHint: trainingHint(for: row.service)
                     ) { action in
                         Task { await model.perform(action: action, on: row.service) }
+                    } onInspectLogs: {
+                        LogInspectorWindowController.shared.show(service: row.service)
                     }
                 }
                 // Empty-state hint while the first poll is still in
@@ -72,7 +84,7 @@ struct ServicesSection: View {
         }
         .task(id: store.lastFetchedAt) {
             model.bind(store: store)   // so perform() can trigger refreshes
-            await model.refresh(snapshot: store.snapshot)
+            await model.refresh(snapshot: store.snapshot, scope: scope.serviceScope)
         }
     }
 
@@ -106,6 +118,15 @@ struct ServicesSection: View {
               store.snapshot?.isAutoCappedByTraining == true
         else { return nil }
         return "capped by training"
+    }
+}
+
+private extension ServicesSection.Scope {
+    var serviceScope: Service.Scope {
+        switch self {
+        case .rocco: return .rocco
+        case .local: return .local
+        }
     }
 }
 
@@ -279,80 +300,158 @@ private struct ServiceRowView: View {
     /// landed on a smaller model. nil hides it.
     var trainingHint: String? = nil
     let onAction: (ServiceAction) -> Void
+    let onInspectLogs: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 10) {
-                // Pulsing dot during in-flight so the operator sees motion
-                // immediately — no more "I clicked Start and nothing
-                // happened for 15 seconds".
-                Circle()
-                    .fill(inFlight ? Color.accentColor : stateColor)
-                    .frame(width: 8, height: 8)
-                    .opacity(inFlight ? 0.55 : 1.0)
-                Image(systemName: row.service.iconSymbol)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18)
-                // The service NAME opens its dashboard (clientURL) when it has
-                // one — frees the single action button for lifecycle (Start/
-                // Restart) while keeping one-click "Open".
-                if let clientURL = row.service.clientURL {
-                    Button(row.service.displayName) {
-                        onAction(ServiceAction(label: "Open", showWhen: [],
-                                               command: .openURL(clientURL)))
-                    }
-                    .buttonStyle(.link)
-                    .font(.subheadline.bold())
-                    .lineLimit(1)
-                    .help("Open \(clientURL.absoluteString)")
-                } else {
-                    Text(row.service.displayName)
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                }
-                // Override the summary while in-flight so the operator sees
-                // the row is working. Once the prober confirms the new
-                // state, inFlight clears and the real summary returns.
-                if inFlight {
-                    Text("working…")
-                        .font(.footnote)
-                        .foregroundStyle(Color.accentColor)
-                        .lineLimit(1)
-                } else if let summary = row.status.summary {
-                    Text(summary)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                if !inFlight, let hint = trainingHint {
-                    Text("· \(hint)")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                        .lineLimit(1)
-                        .help("AURA Pulse reports a training job is using GPUs, so Auto picked a smaller model.")
-                }
-                Spacer(minLength: 4)
-                if !inFlight, let mp = modelPicker, !mp.available.isEmpty {
-                    modelMenu(mp)
-                }
-                if inFlight {
-                    ProgressView().controlSize(.mini)
-                } else if let action = row.service.action(for: row.status.state) {
-                    Button(action.label) { onAction(action) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .tint(buttonTint(for: action))
-                }
+            ViewThatFits(in: .horizontal) {
+                regularRow
+                compactRow
             }
             if !logLines.isEmpty {
                 ServiceLogStrip(lines: logLines, isLive: inFlight)
             }
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, 3)
         .help(row.status.error ?? row.service.displayName)
+    }
+
+    private var regularRow: some View {
+        HStack(spacing: 8) {
+            statusDot
+            serviceIcon
+            serviceName
+                .frame(minWidth: 82, alignment: .leading)
+            summaryCluster
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 0)
+            controlCluster
+        }
+    }
+
+    private var compactRow: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                statusDot
+                serviceIcon
+                serviceName
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                controlCluster
+            }
+            summaryCluster
+                .padding(.leading, 42)
+        }
+    }
+
+    private var statusDot: some View {
+        Circle()
+            .fill(inFlight ? Color.accentColor : stateColor)
+            .frame(width: 10, height: 10)
+            .opacity(inFlight ? 0.55 : 1.0)
+    }
+
+    private var serviceIcon: some View {
+        Image(systemName: row.service.iconSymbol)
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(.secondary)
+            .frame(width: 24)
+    }
+
+    @ViewBuilder
+    private var serviceName: some View {
+        if let clientURL = row.service.clientURL {
+            Button(row.service.displayName) {
+                onAction(ServiceAction(label: "Open", showWhen: [],
+                                       command: .openURL(clientURL)))
+            }
+            .buttonStyle(.link)
+            .font(.subheadline.bold())
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .help("Open \(clientURL.absoluteString)")
+        } else {
+            Text(row.service.displayName)
+                .font(.subheadline.bold())
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    private var summaryCluster: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                summaryText
+                modelPickerView
+                trainingHintView
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    summaryText
+                    trainingHintView
+                }
+                modelPickerView
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var summaryText: some View {
+        if inFlight {
+            Text("working...")
+                .font(.footnote)
+                .foregroundStyle(Color.accentColor)
+                .lineLimit(1)
+        } else if let summary = row.status.summary {
+            Text(summary)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    @ViewBuilder
+    private var modelPickerView: some View {
+        if !inFlight, let mp = modelPicker, !mp.available.isEmpty {
+            modelMenu(mp)
+        }
+    }
+
+    @ViewBuilder
+    private var trainingHintView: some View {
+        if !inFlight, let hint = trainingHint {
+            Text("· \(hint)")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .lineLimit(1)
+                .help("AURA Pulse reports a training job is using GPUs, so Auto picked a smaller model.")
+        }
+    }
+
+    private var controlCluster: some View {
+        HStack(spacing: 6) {
+            if !row.service.logFiles.isEmpty {
+                Button { onInspectLogs() } label: {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 30, height: 24)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Inspect logs")
+            }
+            if inFlight {
+                ProgressView().controlSize(.mini)
+            } else if let action = row.service.action(for: row.status.state) {
+                Button(action.label) { onAction(action) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(buttonTint(for: action))
+                    .frame(minWidth: 64)
+            }
+        }
+        .fixedSize()
     }
 
     /// Dropdown that lets the operator pin which model vLLM serves (or Auto).
@@ -380,7 +479,7 @@ private struct ServiceRowView: View {
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8))
             }
-            .font(.caption)
+            .font(.system(size: 12, weight: .semibold))
         }
         .menuStyle(.borderlessButton)
         .controlSize(.small)
@@ -529,25 +628,26 @@ final class ServicesViewModel: ObservableObject {
     /// the 15s timer for visual feedback.
     func bind(store: StatusStore) { self.store = store }
 
-    func refresh(snapshot: RoccoStatus?) async {
+    func refresh(snapshot: RoccoStatus?, scope: Service.Scope) async {
         isBusy = true
         defer { isBusy = false }
         let result = ServiceRegistry(services: ServiceRegistry.builtins())
             .merging(discovered: snapshot?.services ?? [])
+        let services = result.known.services.filter { $0.scope == scope }
         // Synthesize cheap rows IMMEDIATELY so the section shows
         // something even before the SSH/HTTP probes complete (~5s
         // worst-case). Then update each row's status as the probe
         // finishes — but since SwiftUI redraws on every @Published
         // mutation, batching at the end is cheaper. Compromise:
         // publish a "checking…" pass first, then the real states.
-        rows = result.known.services.map {
+        rows = services.map {
             Row(service: $0,
                 status: ServiceStatus(state: .unknown, summary: "checking…"))
         }
-        unknownPorts = result.unknown
+        unknownPorts = scope == .rocco ? result.unknown : []
 
         var newRows: [Row] = []
-        for svc in result.known.services {
+        for svc in services {
             let status = await prober.probe(svc, snapshot: snapshot)
             newRows.append(Row(service: svc, status: status))
         }
@@ -619,7 +719,7 @@ final class ServicesViewModel: ObservableObject {
             // ask the StatusStore to re-poll Rocco so vllm.running flips
             await store?.refresh()
             prober.invalidate()
-            await refresh(snapshot: store?.snapshot)
+            await refresh(snapshot: store?.snapshot, scope: service.scope)
             let settled = rows.first { $0.service.id == service.id }
                 .map { $0.status.state == .up } ?? false
             appendLog("poll +\(delay)s: \(settled ? "up" : "not ready")", for: service.id)

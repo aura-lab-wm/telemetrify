@@ -16,73 +16,54 @@ import RoccoPulseCore
 /// Padding is tight on purpose — the popover is glance-fast, not a window.
 struct StatusView: View {
     @EnvironmentObject var store: StatusStore
+    @State private var selectedPane: PulsePane = .rocco
     // Lifecycle state (isPerformingLifecycle, lifecycleNotice,
     // LifecycleNotice) was deleted in the de-dupe pass — the Services
     // section now owns vLLM Start/Stop and has its own self-dismissing
     // toast. One place to flash success/error; one mental model.
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                header
+                panePicker
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
             Divider()
 
-            // Diagnosis takes precedence over a stale cached snapshot when
-            // the most recent poll failed. Otherwise users who ever had a
-            // successful poll would see weeks-old GPU data and never the
-            // install hint, because loadCachedSnapshot keeps `snapshot`
-            // populated across launches.
-            let snapshotIsFresh: Bool = {
-                guard let snap = store.snapshot else { return false }
-                return !snap.isStale(now: Date())
-            }()
-
-            if let snapshot = store.snapshot, store.lastError == nil || snapshotIsFresh {
-                tierBadge(snapshot: snapshot)
-                // vLLM no longer rendered here — it lives in the Services
-                // section below as a single canonical row with its
-                // Start/Stop affordance. Showing it both places was
-                // strict duplication and the user called it out.
-                if snapshot.gpus.isEmpty {
-                    Text("No GPUs visible")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(snapshot.gpus, id: \.idx) { gpu in
-                            gpuRow(gpu)
-                        }
-                    }
+            VStack(alignment: .leading, spacing: 8) {
+                switch selectedPane {
+                case .rocco:
+                    roccoPane
+                case .local:
+                    localPane
                 }
-                // "We have data but the latest poll failed" — never hide it.
-                if let err = store.lastError, !snapshotIsFresh {
-                    Divider()
-                    diagnosis(error: err, kind: store.lastErrorKind)
-                }
-                Divider()
-                ServicesSection().environmentObject(store)
-            } else if let error = store.lastError {
-                diagnosis(error: error, kind: store.lastErrorKind)
-            } else {
-                Text("Waiting for first poll…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
 
-            // Lifecycle banner: its OWN row, dismissable, NEVER overlaps the
-            // footer (which is what the previous .overlay(alignment:.bottom)
-            // approach did — the failure message bled into the buttons).
             Divider()
             footer
+                .padding(12)
         }
-        .padding(14)
-        .frame(width: 380)
+        .frame(width: popoverWidth)
+    }
+
+    private enum PulsePane: String, CaseIterable, Identifiable {
+        case rocco = "RoccoPulse"
+        case local = "Local-Pulse"
+        var id: Self { self }
     }
 
     // MARK: - Header
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("Rocco Pulse")
+            Text("AI-Pulse")
                 .font(.headline)
             Spacer()
             if let lastFetched = store.lastFetchedAt {
@@ -91,6 +72,94 @@ struct StatusView: View {
                     .foregroundStyle(.secondary)
                     .help("Last successful poll")
             }
+        }
+    }
+
+    private var panePicker: some View {
+        HStack(spacing: 4) {
+            ForEach(PulsePane.allCases) { pane in
+                Button {
+                    selectedPane = pane
+                } label: {
+                    Text(pane.rawValue)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 26)
+                        .minimumScaleFactor(0.82)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(selectedPane == pane ? .white : .secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(selectedPane == pane
+                              ? Color.accentColor
+                              : Color.primary.opacity(0.09))
+                )
+            }
+        }
+        .frame(height: 30)
+    }
+
+    private var popoverWidth: CGFloat {
+        let visibleWidth = NSScreen.main?.visibleFrame.width ?? 1440
+        return min(460, max(340, visibleWidth * 0.32))
+    }
+
+    private var roccoPane: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            let snapshotIsFresh: Bool = {
+                guard let snap = store.snapshot else { return false }
+                return !snap.isStale(now: Date())
+            }()
+
+            if let snapshot = store.snapshot {
+                tierBadge(snapshot: snapshot)
+                if snapshot.gpus.isEmpty {
+                    Text("No GPUs visible")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 6) {
+                        ForEach(snapshot.gpus, id: \.idx) { gpu in
+                            gpuRow(gpu)
+                        }
+                    }
+                }
+
+                if let err = store.lastError, !snapshotIsFresh {
+                    diagnosis(error: err, kind: store.lastErrorKind)
+                }
+            } else if let error = store.lastError {
+                diagnosis(error: error, kind: store.lastErrorKind)
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("Waiting for first poll...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+            ServicesSection(scope: .rocco).environmentObject(store)
+        }
+    }
+
+    private var localPane: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color(nsColor: .systemGreen))
+                    .frame(width: 10, height: 10)
+                Text("Local-Pulse")
+                    .font(.subheadline.bold())
+                Text("·").foregroundStyle(.tertiary)
+                Text("this Mac")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            ServicesSection(scope: .local).environmentObject(store)
         }
     }
 
@@ -121,6 +190,8 @@ struct StatusView: View {
             Text(snapshot.tierReason)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
     }
 
@@ -133,7 +204,7 @@ struct StatusView: View {
     // MARK: - GPU row
 
     private func gpuRow(_ gpu: RoccoStatus.GPU) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("GPU \(gpu.idx)")
                     .font(.caption.bold())
@@ -143,9 +214,12 @@ struct StatusView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
-                Text("\(gpu.utilPct)% util · \(Int(gpu.memPctUsed))% mem · \(gpu.tempC)°C")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    Text("\(gpu.utilPct)% util · \(Int(gpu.memPctUsed))% mem · \(gpu.tempC)°C")
+                    Text("\(gpu.utilPct)% · \(Int(gpu.memPctUsed))% · \(gpu.tempC)°")
+                }
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.secondary)
             }
             // Unified usage bar: util on top half, mem on bottom half,
             // ZERO gap between them so the two bands read as ONE
@@ -202,6 +276,25 @@ struct StatusView: View {
     // MARK: - Footer
 
     private var footer: some View {
+        ViewThatFits(in: .horizontal) {
+            footerRow
+            VStack(alignment: .leading, spacing: 8) {
+                footerRefreshRow
+                footerControls
+            }
+        }
+        .font(.caption)
+    }
+
+    private var footerRow: some View {
+        HStack(spacing: 8) {
+            footerRefreshRow
+            Spacer(minLength: 4)
+            footerControls
+        }
+    }
+
+    private var footerRefreshRow: some View {
         HStack(spacing: 8) {
             Button {
                 Task { await store.refresh() }
@@ -210,7 +303,11 @@ struct StatusView: View {
                     .labelStyle(.titleAndIcon)
             }
             .controlSize(.small)
-            Spacer(minLength: 4)
+        }
+    }
+
+    private var footerControls: some View {
+        HStack(spacing: 8) {
             Picker("Poll", selection: $store.pollInterval) {
                 ForEach(PollInterval.allCases) { interval in
                     Text(interval.label).tag(interval)
@@ -218,11 +315,10 @@ struct StatusView: View {
             }
             .pickerStyle(.menu)
             .controlSize(.small)
-            .frame(width: 160)
+            .frame(minWidth: 128, idealWidth: 150, maxWidth: 170)
             Button("Quit") { NSApp.terminate(nil) }
                 .controlSize(.small)
         }
-        .font(.caption)
     }
 
     // MARK: - Failure diagnosis

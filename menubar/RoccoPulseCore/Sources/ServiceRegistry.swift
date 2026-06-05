@@ -12,6 +12,28 @@ import Foundation
 /// A future iteration can add a `~/.config/rocco-pulse/services.toml`
 /// loader; the registry was deliberately shaped to make that additive.
 public struct Service: Equatable, Identifiable, Sendable {
+    public enum Scope: Equatable, Sendable {
+        case rocco
+        case local
+    }
+
+    public struct LogFile: Equatable, Identifiable, Sendable {
+        public enum Location: Equatable, Sendable {
+            case local(path: String)
+            case remote(host: String, path: String)
+        }
+
+        public let id: String
+        public let label: String
+        public let location: Location
+
+        public init(id: String, label: String, location: Location) {
+            self.id = id
+            self.label = label
+            self.location = location
+        }
+    }
+
     public enum Kind: Equatable, Sendable {
         /// Plain HTTP probe. `summaryKey` (when set) is a top-level key on
         /// the JSON response whose value is rendered as the row's summary
@@ -39,6 +61,8 @@ public struct Service: Equatable, Identifiable, Sendable {
     /// from rocco-pulse's brand bolt so service rows don't compete with
     /// the menubar identity.
     public let iconSymbol: String
+    public let scope: Scope
+    public let logFiles: [LogFile]
     /// State-conditional buttons. The view picks the FIRST action whose
     /// `showWhen` matches the live state — single button per row keeps
     /// the popover scannable. Add an action here when a new recovery
@@ -47,12 +71,16 @@ public struct Service: Equatable, Identifiable, Sendable {
 
     public init(id: String, displayName: String, kind: Kind,
                 clientURL: URL? = nil, iconSymbol: String = "circle.dotted",
+                scope: Scope = .rocco,
+                logFiles: [LogFile] = [],
                 actions: [ServiceAction] = []) {
         self.id = id
         self.displayName = displayName
         self.kind = kind
         self.clientURL = clientURL
         self.iconSymbol = iconSymbol
+        self.scope = scope
+        self.logFiles = logFiles
         self.actions = actions
     }
 
@@ -100,6 +128,17 @@ public struct ServiceRegistry: Sendable {
                 kind: .http(url: healthURL, summaryKey: "turns"),
                 clientURL: webURL,
                 iconSymbol: "bolt.horizontal.circle",
+                scope: .local,
+                logFiles: [
+                    Service.LogFile(
+                        id: "telemetrify-stdout",
+                        label: "stdout",
+                        location: .local(path: "/Users/amastro/Projects/telemetrify/data/ui-stdout.log")),
+                    Service.LogFile(
+                        id: "telemetrify-stderr",
+                        label: "stderr",
+                        location: .local(path: "/Users/amastro/Projects/telemetrify/data/ui-stderr.log")),
+                ],
                 actions: [
                     // Local LaunchAgent lifecycle straight from the menubar
                     // (no terminal). Disjoint states → one button each:
@@ -123,6 +162,15 @@ public struct ServiceRegistry: Sendable {
                                   unit: "rocco-agent.service"),
             clientURL: nil,
             iconSymbol: "server.rack",
+            scope: .rocco,
+            logFiles: [
+                Service.LogFile(
+                    id: "rocco-agent-journal",
+                    label: "journal",
+                    location: .remote(
+                        host: roccoHost,
+                        path: "journalctl --user -u rocco-agent.service -n 400 --no-pager")),
+            ],
             actions: [
                 // Only offer Restart when the unit is actually .down —
                 // we don't want a tempting "Restart" button next to a
@@ -142,6 +190,21 @@ public struct ServiceRegistry: Sendable {
                               label: "Kimi-Dev-72B"),
             clientURL: nil,
             iconSymbol: "cpu",
+            scope: .rocco,
+            logFiles: [
+                Service.LogFile(
+                    id: "vllm-log",
+                    label: "vLLM",
+                    location: .remote(
+                        host: roccoHost,
+                        path: "tail -n 400 /scratch/amastropaolo/rocco-inference/logs/vllm.log")),
+                Service.LogFile(
+                    id: "manager-log",
+                    label: "manager",
+                    location: .remote(
+                        host: roccoHost,
+                        path: "tail -n 400 /scratch/amastropaolo/rocco-inference/logs/manager.log")),
+            ],
             actions: [
                 // Conditional pair: down → "Start", up → "Stop". The
                 // ServiceRow picks the first action whose showWhen
@@ -168,6 +231,7 @@ public struct ServiceRegistry: Sendable {
                 kind: .http(url: versionURL, summaryKey: "version"),
                 clientURL: nil,
                 iconSymbol: "circle.hexagongrid",
+                scope: .local,
                 actions: [
                     // Down/unknown → launch Ollama.app. Reuses .openURL:
                     // NSWorkspace.open on an app-bundle file URL launches
@@ -225,7 +289,8 @@ public struct ServiceRegistry: Sendable {
                     displayName: discoveredDisplayName(svc: svc, host: host),
                     kind: .discovered(snapshotID: svc.id),
                     clientURL: nil,
-                    iconSymbol: iconForKind(kindStr)
+                    iconSymbol: iconForKind(kindStr),
+                    scope: discoveredScope(kindStr)
                 ))
             } else {
                 unknown.append(svc)
@@ -260,6 +325,15 @@ public struct ServiceRegistry: Sendable {
         case "ssh":           return "key"
         case "prometheus":    return "chart.line.uptrend.xyaxis"
         default:              return "circle.dotted"
+        }
+    }
+
+    private func discoveredScope(_ kind: String) -> Service.Scope {
+        switch kind {
+        case "telemetrify", "aura-pulse":
+            return .local
+        default:
+            return .rocco
         }
     }
 }

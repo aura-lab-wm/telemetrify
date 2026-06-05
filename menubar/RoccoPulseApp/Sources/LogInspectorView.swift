@@ -146,6 +146,7 @@ struct LogInspectorView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                // re-filters on every keystroke — fine at the 400-line tail cap
                 TextField("Filter…", text: $filter.query)
                     .textFieldStyle(.plain)
                     .font(.system(.caption, design: .monospaced))
@@ -180,6 +181,8 @@ struct LogInspectorView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .contentShape(Capsule())
+        .accessibilityLabel(isOn ? "Hide \(level.rawValue) lines" : "Show \(level.rawValue) lines")
         .help(isOn ? "Hide \(level.rawValue) lines" : "Show \(level.rawValue) lines")
     }
 
@@ -209,11 +212,13 @@ struct LogInspectorView: View {
             }
             .background(Color.primary.opacity(0.045))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .onChange(of: model.lines) { _, _ in
-                scrollToEnd(proxy, visible: visible)
+            .onChange(of: model.lines) { _, newLines in
+                // recompute — the `visible` captured by this closure is from
+                // the PREVIOUS body evaluation and would undershoot the tail
+                scrollToEnd(proxy, visible: filter.apply(to: newLines))
             }
             .onChange(of: autoScroll) { _, on in
-                if on { scrollToEnd(proxy, visible: visible) }
+                if on { scrollToEnd(proxy, visible: filter.apply(to: model.lines)) }
             }
         }
     }

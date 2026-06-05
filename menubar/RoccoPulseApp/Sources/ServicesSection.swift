@@ -291,7 +291,8 @@ private struct ServiceRowView: View {
         static let gutter: CGFloat = 44      // outside-card action column
         static let rowHeight: CGFloat = 32
         static let columnGap: CGFloat = 8
-        static let detailIndent: CGFloat = dot + columnGap + icon + columnGap
+        static let detailIndent: CGFloat = dot + columnGap + icon + columnGap  // aligns secondary detail under the name column
+        static let gutterButton: CGFloat = 32   // inner control size inside the 44pt gutter
     }
 
     /// vLLM-only: the pinnable model configs + current selection, plus a
@@ -326,6 +327,10 @@ private struct ServiceRowView: View {
         .help(row.status.error ?? row.service.displayName)
     }
 
+    /// Everything that belongs to the service itself — status, identity,
+    /// summary, model picker, log strip — wrapped in one tinted container.
+    /// Its geometry must be identical in every lifecycle state; anything
+    /// state-dependent in SIZE lives in the gutter outside.
     private var card: some View {
         VStack(alignment: .leading, spacing: 4) {
             primaryRow
@@ -390,15 +395,16 @@ private struct ServiceRowView: View {
         case .busy:
             ProgressView()
                 .controlSize(.small)
-                .frame(width: 32, height: 32)
+                .frame(width: Metrics.gutterButton, height: Metrics.gutterButton)
         case .placeholder:
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.10),
                               style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                .frame(width: 32, height: 32)
+                .frame(width: Metrics.gutterButton, height: Metrics.gutterButton)
                 .accessibilityHidden(true)
         case .action(let symbol, let verb, let isDestructive):
             Button {
+                // currentAction is non-nil whenever GutterPresentation returns .action; the if-let is belt-and-braces, not a reachable branch.
                 if let currentAction { onAction(currentAction) }
             } label: {
                 Image(systemName: symbol)
@@ -589,10 +595,7 @@ private struct ServiceLogStrip: View {
         .padding(.leading, 36)
         .padding(.trailing, 6)
         .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.primary.opacity(0.055))
-        )
+        // no own background — the card already tints this area
     }
 
     private var displayLines: [String] {

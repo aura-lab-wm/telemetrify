@@ -119,9 +119,14 @@ struct ServicesSection: View {
     /// Picking writes the default model for NEW claude sessions and, for
     /// rocco models, pre-warms the GPU tier through the shim's /v1/switch.
     private func gatewayPicker(for service: Service) -> ServiceRowView.GatewayPicker? {
-        guard service.id == "gateway", !gatewayStore.models.isEmpty else { return nil }
+        guard service.id == "gateway" else { return nil }
+        // Local-Pulse shows what runs on THIS machine: ollama tags only.
+        // Rocco models are picked in Claude Code's /model (or the vllm row);
+        // Anthropic isn't local hardware at all.
+        let local = gatewayStore.models.filter { $0.group == .ollama }
+        guard !local.isEmpty else { return nil }
         return ServiceRowView.GatewayPicker(
-            models: gatewayStore.models,
+            models: local,
             selectedId: gatewayStore.selectedId
         ) { picked in
             Task {

@@ -286,9 +286,11 @@ private struct ServiceRowView: View {
     private enum Metrics {
         static let dot: CGFloat = 10
         static let icon: CGFloat = 26
-        static let name: CGFloat = 166
-        static let actions: CGFloat = 142
+        static let name: CGFloat = 124
+        static let actions: CGFloat = 120
         static let rowHeight: CGFloat = 32
+        static let columnGap: CGFloat = 10
+        static let detailIndent: CGFloat = dot + columnGap + icon + columnGap + name + columnGap
     }
 
     /// vLLM-only: the pinnable model configs + current selection, plus a
@@ -312,9 +314,9 @@ private struct ServiceRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ViewThatFits(in: .horizontal) {
-                regularRow
-                compactRow
+            primaryRow
+            if hasSecondaryDetail {
+                secondaryDetailRow
             }
             if !logLines.isEmpty {
                 ServiceLogStrip(lines: logLines, isLive: inFlight)
@@ -324,13 +326,13 @@ private struct ServiceRowView: View {
         .help(row.status.error ?? row.service.displayName)
     }
 
-    private var regularRow: some View {
-        HStack(alignment: .center, spacing: 10) {
+    private var primaryRow: some View {
+        HStack(alignment: .center, spacing: Metrics.columnGap) {
             statusDot
             serviceIcon
             serviceName
                 .frame(width: Metrics.name, alignment: .leading)
-            summaryCluster
+            summaryText
                 .frame(maxWidth: .infinity, alignment: .leading)
             controlCluster
                 .frame(width: Metrics.actions, alignment: .trailing)
@@ -338,19 +340,20 @@ private struct ServiceRowView: View {
         .frame(minHeight: Metrics.rowHeight)
     }
 
-    private var compactRow: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .center, spacing: 10) {
-                statusDot
-                serviceIcon
-                serviceName
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                controlCluster
-            }
-            .frame(minHeight: Metrics.rowHeight)
-            summaryCluster
-                .padding(.leading, Metrics.dot + 10 + Metrics.icon + 10)
+    private var secondaryDetailRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Color.clear
+                .frame(width: Metrics.detailIndent, height: 1)
+            modelPickerView
+            trainingHintView
+            Spacer(minLength: 0)
         }
+    }
+
+    private var hasSecondaryDetail: Bool {
+        if !inFlight, let mp = modelPicker, !mp.available.isEmpty { return true }
+        if !inFlight, trainingHint != nil { return true }
+        return false
     }
 
     private var statusDot: some View {
@@ -386,23 +389,6 @@ private struct ServiceRowView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
-        }
-    }
-
-    private var summaryCluster: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
-                summaryText
-                modelPickerView
-                trainingHintView
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    summaryText
-                    trainingHintView
-                }
-                modelPickerView
-            }
         }
     }
 
@@ -445,19 +431,19 @@ private struct ServiceRowView: View {
             if !row.service.logFiles.isEmpty {
                 Button { onInspectLogs() } label: {
                     Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .symbolRenderingMode(.hierarchical)
-                        .frame(width: 34, height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(Color.primary.opacity(0.11))
-                        )
+                        .frame(width: 28, height: 22)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .frame(width: 40)
                 .help("Inspect logs")
             }
             if inFlight {
-                ProgressView().controlSize(.mini)
+                ProgressView()
+                    .controlSize(.mini)
+                    .frame(width: 74)
             } else if let action = row.service.action(for: row.status.state) {
                 Button(action.label) { onAction(action) }
                     .buttonStyle(.bordered)
@@ -489,8 +475,9 @@ private struct ServiceRowView: View {
             }
         } label: {
             HStack(spacing: 3) {
-                Image(systemName: "cpu")
                 Text(currentModelShortLabel(mp))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8))
             }
@@ -498,7 +485,7 @@ private struct ServiceRowView: View {
         }
         .menuStyle(.borderlessButton)
         .controlSize(.small)
-        .fixedSize()
+        .frame(maxWidth: .infinity, alignment: .leading)
         .help("Choose which model vLLM serves on Rocco")
     }
 
@@ -508,7 +495,18 @@ private struct ServiceRowView: View {
         guard let sel = mp.selected,
               let m = mp.available.first(where: { $0.profile == sel })
         else { return "Auto" }
-        return "\(m.model) · \(m.precision.uppercased())"
+        return "\(shortModelName(m.model)) · \(m.precision.uppercased())"
+    }
+
+    private func shortModelName(_ model: String) -> String {
+        let leaf = model.split(separator: "/").last.map(String.init) ?? model
+        let simplified = leaf
+            .replacingOccurrences(of: "Llama-3.1-", with: "")
+            .replacingOccurrences(of: "Meta-", with: "")
+            .replacingOccurrences(of: "Qwen3-Coder-", with: "Qwen3-")
+            .replacingOccurrences(of: "-2-70B", with: "-70B")
+        if simplified.count <= 24 { return simplified }
+        return String(simplified.suffix(24))
     }
 
     private var stateColor: Color {

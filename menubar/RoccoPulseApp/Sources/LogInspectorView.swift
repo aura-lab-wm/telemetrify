@@ -58,6 +58,8 @@ struct LogInspectorView: View {
     let logFiles: [Service.LogFile]
     @StateObject private var model = LogInspectorModel()
     @State private var selectedID: String?
+    @State private var filter = LogFilter()
+    @State private var autoScroll = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -113,27 +115,127 @@ struct LogInspectorView: View {
 
     private var rawLogPane: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("LOG")
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .tracking(1)
+            HStack(spacing: 8) {
+                Text("LOG")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .tracking(1)
+                Spacer()
+                Button {
+                    copyFiltered()
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .controlSize(.small)
+                .help("Copy the filtered lines to the clipboard")
+            }
+            filterBar
             if model.isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    Text(model.text.isEmpty ? "No log lines found." : model.text)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                }
-                .background(Color.primary.opacity(0.045))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                logStream
             }
         }
         .padding(14)
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                TextField("Filter…", text: $filter.query)
+                    .textFieldStyle(.plain)
+                    .font(.system(.caption, design: .monospaced))
+            }
+            .padding(.horizontal, 7).padding(.vertical, 4)
+            .background(Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .frame(maxWidth: 220)
+
+            ForEach(LogLevel.allCases, id: \.self) { level in
+                levelChip(level)
+            }
+            Spacer()
+            Toggle("Auto-scroll", isOn: $autoScroll)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .font(.caption)
+        }
+    }
+
+    private func levelChip(_ level: LogLevel) -> some View {
+        let isOn = filter.enabledLevels.contains(level)
+        return Button {
+            if isOn { filter.enabledLevels.remove(level) }
+            else    { filter.enabledLevels.insert(level) }
+        } label: {
+            Text(level.rawValue)
+                .font(.system(size: 10, design: .monospaced).bold())
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(levelColor(level).opacity(isOn ? 0.22 : 0.07))
+                .foregroundStyle(isOn ? levelColor(level) : .secondary)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(isOn ? "Hide \(level.rawValue) lines" : "Show \(level.rawValue) lines")
+    }
+
+    private var logStream: some View {
+        let visible = filter.apply(to: model.lines)
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    if visible.isEmpty {
+                        Text(model.lines.isEmpty
+                             ? "No log lines found."
+                             : "No lines match the current filter.")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .padding(10)
+                    }
+                    ForEach(visible) { line in
+                        Text(line.text)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(levelColor(line.level))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(line.id)
+                    }
+                }
+                .padding(10)
+            }
+            .background(Color.primary.opacity(0.045))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .onChange(of: model.lines) { _, _ in
+                scrollToEnd(proxy, visible: visible)
+            }
+            .onChange(of: autoScroll) { _, on in
+                if on { scrollToEnd(proxy, visible: visible) }
+            }
+        }
+    }
+
+    private func scrollToEnd(_ proxy: ScrollViewProxy, visible: [LogLine]) {
+        guard autoScroll, let last = visible.last else { return }
+        proxy.scrollTo(last.id, anchor: .bottom)
+    }
+
+    private func copyFiltered() {
+        let text = filter.apply(to: model.lines).map(\.text).joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func levelColor(_ level: LogLevel?) -> Color {
+        switch level {
+        case .error: return .red
+        case .warn:  return .orange
+        case .info:  return Color.primary.opacity(0.85)
+        case nil:    return .secondary
+        }
     }
 
     private var insightPane: some View {
@@ -203,6 +305,7 @@ private final class LogInspectorModel: ObservableObject {
     @Published var text: String = ""
     @Published var isLoading: Bool = false
     @Published var insight = LogInsight.empty
+    @Published var lines: [LogLine] = []
     private let launcher = RealProcessLauncher()
 
     func load(_ file: Service.LogFile) async {
@@ -211,9 +314,11 @@ private final class LogInspectorModel: ObservableObject {
         do {
             let loaded = try await loadText(file)
             text = loaded
+            lines = LogLine.parse(loaded)
             insight = LogInsight.analyze(loaded)
         } catch {
             text = error.localizedDescription
+            lines = LogLine.parse(error.localizedDescription)
             insight = LogInsight(
                 total: 1,
                 errors: 1,

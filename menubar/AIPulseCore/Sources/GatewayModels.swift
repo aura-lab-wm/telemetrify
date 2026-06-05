@@ -31,10 +31,10 @@ public enum GatewayModelList {
         let data: [Entry]
     }
 
-    /// Anthropic ids worth picking. The dated ids (claude-haiku-4-5-20251001)
-    /// exist purely so Claude Code's background calls route — hidden here.
+    /// Friendly Anthropic aliases the gateway exposes (the real claude-* ids
+    /// route via the hidden catch-all and are not listed).
     private static let anthropicPickable: Set<String> = [
-        "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5",
+        "opus4.8", "sonnet", "haiku",
     ]
 
     public static func parse(_ data: Data) throws -> [GatewayModel] {
@@ -49,17 +49,11 @@ public enum GatewayModelList {
                     id: id, group: .rocco,
                     displayName: String(id.dropFirst("claude-".count)))
             }
-            if id.hasPrefix("claude-ollama-") {
-                return GatewayModel(
-                    id: id, group: .ollama,
-                    displayName: String(id.dropFirst("claude-ollama-".count)))
-            }
             if anthropicPickable.contains(id) {
-                return GatewayModel(
-                    id: id, group: .anthropic,
-                    displayName: String(id.dropFirst("claude-".count)))
+                return GatewayModel(id: id, group: .anthropic, displayName: id)
             }
-            return nil
+            // Everything else the gateway lists is a bare local-Ollama tag.
+            return GatewayModel(id: id, group: .ollama, displayName: id)
         }
     }
 }

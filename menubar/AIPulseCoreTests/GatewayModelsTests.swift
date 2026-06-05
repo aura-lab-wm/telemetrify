@@ -13,33 +13,28 @@ final class GatewayModelsTests: XCTestCase {
     func testParseGroupsRoccoOllamaAnthropic() throws {
         let data = modelsJSON([
             "claude-rocco-wrn", "claude-rocco-kimi",
-            "claude-ollama-rabbit", "claude-ollama-gpt-oss-20b",
-            "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5",
+            "rabbit", "gpt-oss:20b", "whiterabbitneo-70b-tools",
+            "opus4.8", "sonnet", "haiku",
         ])
         let models = try GatewayModelList.parse(data)
         XCTAssertEqual(models.filter { $0.group == .rocco }.map(\.id),
                        ["claude-rocco-wrn", "claude-rocco-kimi"])
         XCTAssertEqual(models.filter { $0.group == .ollama }.map(\.id),
-                       ["claude-ollama-rabbit", "claude-ollama-gpt-oss-20b"])
+                       ["rabbit", "gpt-oss:20b", "whiterabbitneo-70b-tools"])
         XCTAssertEqual(models.filter { $0.group == .anthropic }.map(\.id),
-                       ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"])
+                       ["opus4.8", "sonnet", "haiku"])
     }
 
-    func testParseSkipsWildcardsBareDuplicatesAndDatedIds() throws {
-        let data = modelsJSON([
-            "rocco-*", "rabbit", "gpt", "baronllm-tools",          // wildcard + bare dupes
-            "opus4.8", "sonnet", "haiku",                          // friendly anthropic dupes
-            "claude-haiku-4-5-20251001",                           // dated background id
-            "claude-rocco-wrn",
-        ])
+    func testParseSkipsWildcards() throws {
+        let data = modelsJSON(["rocco-*", "*", "claude-rocco-wrn", "rabbit"])
         let models = try GatewayModelList.parse(data)
-        XCTAssertEqual(models.map(\.id), ["claude-rocco-wrn"])
+        XCTAssertEqual(models.map(\.id), ["claude-rocco-wrn", "rabbit"])
     }
 
     func testDisplayNamesStripPrefixes() throws {
-        let data = modelsJSON(["claude-rocco-wrn", "claude-ollama-rabbit", "claude-opus-4-8"])
+        let data = modelsJSON(["claude-rocco-wrn", "rabbit", "opus4.8"])
         let models = try GatewayModelList.parse(data)
-        XCTAssertEqual(models.map(\.displayName), ["rocco-wrn", "rabbit", "opus-4-8"])
+        XCTAssertEqual(models.map(\.displayName), ["rocco-wrn", "rabbit", "opus4.8"])
     }
 
     func testParseMalformedThrows() {

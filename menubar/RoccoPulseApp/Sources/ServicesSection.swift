@@ -565,8 +565,12 @@ private struct ServiceRowView: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(Capsule().fill(Color.accentColor.opacity(0.14)))
-            .frame(maxWidth: 150)
-            .fixedSize(horizontal: false, vertical: true)
+            // The summary column is greedy (maxWidth: .infinity) — without
+            // a higher layout priority the chip loses the width fight and
+            // collapses to "WRN…". Chip wins up to 190pt; the SUMMARY is
+            // what truncates on tight widths.
+            .frame(maxWidth: 190)
+            .layoutPriority(1)
             .help("Choose which model vLLM serves on Rocco")
             .accessibilityLabel("Model: \(currentModelShortLabel(mp))")
         }

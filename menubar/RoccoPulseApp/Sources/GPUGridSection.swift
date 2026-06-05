@@ -44,7 +44,7 @@ private struct KPIStrip: View {
     private func kpi(label: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label)
-                .font(.system(size: 9, design: .monospaced))
+                .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .tracking(0.5)
             Text(value)
@@ -88,7 +88,7 @@ private struct GPUCell: View {
                 Sparkline(samples: memSamples)
                     .frame(height: 12)
                 Text("mem \(Int(gpu.memPctUsed))%")
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
         }

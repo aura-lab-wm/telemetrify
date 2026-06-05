@@ -25,7 +25,7 @@ struct ServicesSection: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text("SERVICES")
-                    .font(.system(.caption2, design: .monospaced))
+                    .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .tracking(1.0)
                 Spacer()
@@ -462,13 +462,13 @@ private struct ServiceRowView: View {
                                        command: .openURL(clientURL)))
             }
             .buttonStyle(.link)
-            .font(.subheadline.bold())
+            .font(.body.bold())
             .lineLimit(1)
             .truncationMode(.tail)
             .help("Open \(clientURL.absoluteString)")
         } else {
             Text(row.service.displayName)
-                .font(.subheadline.bold())
+                .font(.body.bold())
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -479,12 +479,12 @@ private struct ServiceRowView: View {
     private var summaryText: some View {
         if inFlight {
             Text("working...")
-                .font(.footnote)
+                .font(.callout)
                 .foregroundStyle(Color.accentColor)
                 .lineLimit(1)
         } else if let summary = row.status.summary {
             Text(summary)
-                .font(.footnote)
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -532,9 +532,12 @@ private struct ServiceRowView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 7, weight: .bold))
+                        .font(.system(size: 8, weight: .bold))
                 }
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                // 12pt matches the pre-chip picker — the REST of the row
+                // scaled up to meet it instead (user call: never shrink
+                // the selector text).
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
             }
             .menuStyle(.borderlessButton)

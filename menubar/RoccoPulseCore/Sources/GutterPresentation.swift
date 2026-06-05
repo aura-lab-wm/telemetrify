@@ -18,12 +18,14 @@ public enum GutterPresentation: Equatable, Sendable {
         if inFlight { return .busy }
         guard let action else { return .placeholder }
         switch action.command {
-        case .stopVLLM, .stopLocalAgent:
+        case .stopVLLM, .stopLocalAgent, .sshStopUnit, .quitLocalApp:
             return .action(symbol: "stop.fill", verb: "Stop", isDestructive: true)
-        case .startVLLM, .startLocalAgent:
+        case .startVLLM, .startLocalAgent, .sshStartUnit:
             return .action(symbol: "play.fill", verb: "Start", isDestructive: false)
         case .sshRestartUnit, .restartLocalAgent:
             return .action(symbol: "arrow.clockwise", verb: "Restart", isDestructive: false)
+        case .sshKillUnit, .killLocalAgent:
+            return .action(symbol: "xmark.octagon", verb: "Kill", isDestructive: true)
         case .openURL:
             return .action(symbol: "arrow.up.right.square", verb: "Open", isDestructive: false)
         case .selectModel:

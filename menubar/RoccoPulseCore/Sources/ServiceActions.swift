@@ -27,6 +27,20 @@ public enum ServiceCommand: Equatable, Sendable {
     /// Bounce a local LaunchAgent: `launchctl stop` (best-effort) then
     /// `launchctl start`, mirroring `bin/service restart`.
     case restartLocalAgent(label: String)
+    /// `ssh <host> systemctl --user start <unit>` — bring a remote
+    /// user-unit up without bouncing it (Restart stays for recovery).
+    case sshStartUnit(host: String, unit: String)
+    /// `ssh <host> systemctl --user stop <unit>`.
+    case sshStopUnit(host: String, unit: String)
+    /// `ssh <host> systemctl --user kill -s SIGKILL <unit>` — hard kill
+    /// for a wedged unit that ignores stop.
+    case sshKillUnit(host: String, unit: String)
+    /// `launchctl kill SIGKILL gui/<uid>/<label>` — hard kill a LOCAL
+    /// LaunchAgent that stopped responding to `launchctl stop`.
+    case killLocalAgent(label: String)
+    /// `pkill -x <name>` — quit a local .app (e.g. Ollama) that has no
+    /// LaunchAgent label to address. Exit 1 (no match) is tolerated.
+    case quitLocalApp(name: String)
 }
 
 /// A button bound to a ServiceCommand, shown only when the service's
@@ -95,23 +109,41 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
             throw ServiceCommandError.urlOpenFailed(url)
 
         case .sshRestartUnit(let host, let unit):
-            let args = [
-                "-o", "BatchMode=yes",
-                "-o", "ConnectTimeout=4",
-                host,
-                "systemctl", "--user", "restart", unit,
-            ]
+            try runUserSystemctl(host: host, args: ["restart", unit], log: log)
+            return "\(unit) restarted on \(host)"
+
+        case .sshStartUnit(let host, let unit):
+            try runUserSystemctl(host: host, args: ["start", unit], log: log)
+            return "\(unit) started on \(host)"
+
+        case .sshStopUnit(let host, let unit):
+            try runUserSystemctl(host: host, args: ["stop", unit], log: log)
+            return "\(unit) stopped on \(host)"
+
+        case .sshKillUnit(let host, let unit):
+            try runUserSystemctl(host: host, args: ["kill", "-s", "SIGKILL", unit], log: log)
+            return "\(unit) killed on \(host)"
+
+        case .killLocalAgent(let label):
+            // launchctl kill needs the full service-target, not the bare
+            // label — gui/<uid>/ is the domain LaunchAgents live in.
+            _ = try runLaunchctl(["kill", "SIGKILL", "gui/\(getuid())/\(label)"], log: log)
+            return "\(label) killed"
+
+        case .quitLocalApp(let name):
             let result = try sshLauncher.run(
-                executable: "/usr/bin/ssh",
-                arguments: args,
+                executable: "/usr/bin/pkill",
+                arguments: ["-x", name],
                 timeout: 8)
             emit(result, to: log)
-            guard result.exitCode == 0 else {
-                throw ServiceCommandError.sshFailed(
+            switch result.exitCode {
+            case 0:  return "\(name) stopped"
+            case 1:  return "\(name) was not running"   // pkill: no match
+            default:
+                throw ServiceCommandError.processKillFailed(
                     code: result.exitCode,
                     stderr: result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))
             }
-            return "\(unit) restarted on \(host)"
 
         case .startVLLM:
             try withLifecycleLogging(log) {
@@ -146,6 +178,29 @@ public final class DefaultServiceCommandRunner: ServiceCommandRunner, @unchecked
             _ = try? runLaunchctl(["stop", label], log: log)
             _ = try runLaunchctl(["start", label], log: log)
             return "\(label) restarted"
+        }
+    }
+
+    /// `ssh <host> systemctl --user <args>` — shared by restart/start/
+    /// stop/kill so the ssh plumbing (BatchMode, timeout, error shape)
+    /// stays in one place.
+    private func runUserSystemctl(host: String, args: [String],
+                                  log: (@Sendable (String) -> Void)?) throws {
+        let full = [
+            "-o", "BatchMode=yes",
+            "-o", "ConnectTimeout=4",
+            host,
+            "systemctl", "--user",
+        ] + args
+        let result = try sshLauncher.run(
+            executable: "/usr/bin/ssh",
+            arguments: full,
+            timeout: 8)
+        emit(result, to: log)
+        guard result.exitCode == 0 else {
+            throw ServiceCommandError.sshFailed(
+                code: result.exitCode,
+                stderr: result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }
 
@@ -234,6 +289,11 @@ private extension ServiceCommand {
         case .startLocalAgent(let label): return "launchctl start \(label)"
         case .stopLocalAgent(let label): return "launchctl stop \(label)"
         case .restartLocalAgent(let label): return "launchctl restart \(label)"
+        case .sshStartUnit(let host, let unit): return "ssh \(host) systemctl --user start \(unit)"
+        case .sshStopUnit(let host, let unit): return "ssh \(host) systemctl --user stop \(unit)"
+        case .sshKillUnit(let host, let unit): return "ssh \(host) systemctl --user kill -s SIGKILL \(unit)"
+        case .killLocalAgent(let label): return "launchctl kill SIGKILL \(label)"
+        case .quitLocalApp(let name): return "pkill -x \(name)"
         }
     }
 }
@@ -250,6 +310,7 @@ public enum ServiceCommandError: LocalizedError {
     case urlOpenFailed(URL)
     case sshFailed(code: Int32, stderr: String)
     case launchctlFailed(code: Int32, stderr: String)
+    case processKillFailed(code: Int32, stderr: String)
 
     public var errorDescription: String? {
         switch self {
@@ -259,6 +320,8 @@ public enum ServiceCommandError: LocalizedError {
             return "ssh exited with code \(code): \(stderr)"
         case .launchctlFailed(let code, let stderr):
             return "launchctl exited with code \(code): \(stderr)"
+        case .processKillFailed(let code, let stderr):
+            return "pkill exited with code \(code): \(stderr)"
         }
     }
 }

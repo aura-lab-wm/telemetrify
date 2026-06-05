@@ -75,14 +75,15 @@ final class ServiceLifecycleLocalTests: XCTestCase {
 
     // MARK: - registry wiring
 
-    func testTelemetrifyRowOffersStartWhenDownAndRestartWhenUp() {
+    func testTelemetrifyRowOffersStartWhenDownAndStopWhenUp() {
         let svc = ServiceRegistry.builtins().first { $0.id == "telemetrify" }
         XCTAssertNotNil(svc)
         guard let svc else { return }
 
         XCTAssertEqual(svc.action(for: .down)?.command, .startLocalAgent(label: label))
         XCTAssertEqual(svc.action(for: .unknown)?.command, .startLocalAgent(label: label))
-        XCTAssertEqual(svc.action(for: .up)?.command, .restartLocalAgent(label: label))
+        // Up → primary Stop; Restart/Kill moved to the gutter context menu.
+        XCTAssertEqual(svc.action(for: .up)?.command, .stopLocalAgent(label: label))
         // the dashboard URL is still carried so the row name can open it
         XCTAssertNotNil(svc.clientURL)
     }

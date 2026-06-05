@@ -403,6 +403,7 @@ private struct ServiceRowView: View {
                 .frame(width: Metrics.gutterButton, height: Metrics.gutterButton)
                 .accessibilityHidden(true)
         case .action(let symbol, let verb, let isDestructive):
+            let extras = Array(row.service.actions(for: row.status.state).dropFirst())
             Button {
                 // currentAction is non-nil whenever GutterPresentation returns .action; the if-let is belt-and-braces, not a reachable branch.
                 if let currentAction { onAction(currentAction) }
@@ -414,8 +415,28 @@ private struct ServiceRowView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .tint(isDestructive ? .red : .accentColor)
-            .help("\(verb) \(row.service.displayName)")
+            .help("\(verb) \(row.service.displayName)"
+                  + (extras.isEmpty ? "" : " — right-click for \(extras.map(\.label).joined(separator: "/"))"))
             .accessibilityLabel("\(verb) \(row.service.displayName)")
+            .contextMenu { secondaryMenuItems(extras) }
+        }
+    }
+
+    /// Secondary lifecycle actions (Restart, Kill, …) for the current
+    /// state — everything after the gutter's primary. A context menu
+    /// keeps destructive escalations one deliberate right-click away
+    /// instead of widening the 44pt gutter.
+    @ViewBuilder
+    private func secondaryMenuItems(_ extras: [ServiceAction]) -> some View {
+        ForEach(Array(extras.enumerated()), id: \.offset) { _, extra in
+            if case .action(let symbol, _, let isDestructive) =
+                GutterPresentation.make(action: extra, inFlight: false) {
+                Button(role: isDestructive ? .destructive : nil) {
+                    onAction(extra)
+                } label: {
+                    Label(extra.label, systemImage: symbol)
+                }
+            }
         }
     }
 
@@ -745,10 +766,13 @@ final class ServicesViewModel: ObservableObject {
     /// decide when the in-flight overlay should clear.
     private func isUpAction(_ action: ServiceAction) -> Bool {
         switch action.command {
-        case .stopVLLM, .stopLocalAgent:         return false
+        case .stopVLLM, .stopLocalAgent,
+             .sshStopUnit, .sshKillUnit,
+             .killLocalAgent, .quitLocalApp:      return false
         case .startVLLM, .sshRestartUnit,
              .openURL, .selectModel,
-             .startLocalAgent, .restartLocalAgent: return true
+             .startLocalAgent, .restartLocalAgent,
+             .sshStartUnit:                        return true
         }
     }
 

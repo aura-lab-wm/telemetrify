@@ -28,8 +28,10 @@ final class ServiceRegistryTests: XCTestCase {
         XCTAssertEqual(ollama.action(for: .down)?.label, "Start")
         XCTAssertEqual(ollama.action(for: .down)?.command, expectedStart)
         XCTAssertEqual(ollama.action(for: .unknown)?.command, expectedStart)
-        XCTAssertNil(ollama.action(for: .up),
-            "no button next to a healthy local ollama to fat-finger")
+        // Up → quick Stop (quit Ollama.app via pkill). Every service
+        // shows a lifecycle icon in every state now.
+        XCTAssertEqual(ollama.action(for: .up)?.command,
+                       .quitLocalApp(name: "Ollama"))
     }
 
     func testMergingStillSurfacesRemoteOllamaDespiteLocalBuiltin() {

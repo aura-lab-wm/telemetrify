@@ -90,6 +90,14 @@ public struct Service: Equatable, Identifiable, Sendable {
     public func action(for state: ServiceStatus.State) -> ServiceAction? {
         actions.first { $0.applies(to: state) }
     }
+
+    /// ALL actions matching the state, in declaration order. The first
+    /// is the gutter's primary icon; the rest land in its context menu
+    /// (Kill, Restart, …) so every recovery path stays one right-click
+    /// away without widening the row.
+    public func actions(for state: ServiceStatus.State) -> [ServiceAction] {
+        actions.filter { $0.applies(to: state) }
+    }
 }
 
 public struct ServiceStatus: Equatable, Sendable {
@@ -141,16 +149,24 @@ public struct ServiceRegistry: Sendable {
                 ],
                 actions: [
                     // Local LaunchAgent lifecycle straight from the menubar
-                    // (no terminal). Disjoint states → one button each:
-                    //   down/unknown → Start, up → Restart.
-                    // "Open" the dashboard moved onto the row NAME (clientURL)
-                    // so the single action button is free for lifecycle.
+                    // (no terminal). Primary icon per state (Start/Stop);
+                    // Restart and hard Kill live in the gutter's context
+                    // menu. "Open" the dashboard stays on the row NAME
+                    // (clientURL) so the gutter is purely lifecycle.
                     ServiceAction(label: "Start",
                                   showWhen: [.down, .unknown],
                                   command: .startLocalAgent(label: "com.amastropaolo.telemetrify")),
+                    ServiceAction(label: "Stop",
+                                  showWhen: [.up],
+                                  command: .stopLocalAgent(label: "com.amastropaolo.telemetrify")),
                     ServiceAction(label: "Restart",
                                   showWhen: [.up],
-                                  command: .restartLocalAgent(label: "com.amastropaolo.telemetrify")),
+                                  command: .restartLocalAgent(label: "com.amastropaolo.telemetrify"),
+                                  isPrimary: false),
+                    ServiceAction(label: "Kill",
+                                  showWhen: [.up],
+                                  command: .killLocalAgent(label: "com.amastropaolo.telemetrify"),
+                                  isPrimary: false),
                 ]
             ))
         }
@@ -172,14 +188,32 @@ public struct ServiceRegistry: Sendable {
                         path: "journalctl --user -u rocco-agent.service -n 400 --no-pager")),
             ],
             actions: [
-                // Only offer Restart when the unit is actually .down —
-                // we don't want a tempting "Restart" button next to a
-                // healthy service that the operator could fat-finger.
-                ServiceAction(label: "Restart",
-                              showWhen: [.down],
-                              command: .sshRestartUnit(
+                // Every state gets a one-click lifecycle icon (user rule:
+                // "every service shows quick stop/start/kill"). Primary =
+                // first match; Restart/Kill ride the context menu so the
+                // fat-finger risk stays one deliberate right-click away.
+                ServiceAction(label: "Start",
+                              showWhen: [.down, .unknown],
+                              command: .sshStartUnit(
                                 host: roccoHost,
                                 unit: "rocco-agent.service")),
+                ServiceAction(label: "Stop",
+                              showWhen: [.up],
+                              command: .sshStopUnit(
+                                host: roccoHost,
+                                unit: "rocco-agent.service")),
+                ServiceAction(label: "Restart",
+                              showWhen: [.up, .down, .unknown],
+                              command: .sshRestartUnit(
+                                host: roccoHost,
+                                unit: "rocco-agent.service"),
+                              isPrimary: false),
+                ServiceAction(label: "Kill",
+                              showWhen: [.up],
+                              command: .sshKillUnit(
+                                host: roccoHost,
+                                unit: "rocco-agent.service"),
+                              isPrimary: false),
             ]
         ))
 
@@ -235,12 +269,15 @@ public struct ServiceRegistry: Sendable {
                 actions: [
                     // Down/unknown → launch Ollama.app. Reuses .openURL:
                     // NSWorkspace.open on an app-bundle file URL launches
-                    // it — no new ServiceCommand case needed. No button
-                    // when up (same fat-finger rule as rocco-agent).
+                    // it — no new ServiceCommand case needed. Up → quit
+                    // the app via pkill (it has no LaunchAgent label).
                     ServiceAction(label: "Start",
                                   showWhen: [.down, .unknown],
                                   command: .openURL(
                                     URL(fileURLWithPath: "/Applications/Ollama.app"))),
+                    ServiceAction(label: "Stop",
+                                  showWhen: [.up],
+                                  command: .quitLocalApp(name: "Ollama")),
                 ]
             ))
         }

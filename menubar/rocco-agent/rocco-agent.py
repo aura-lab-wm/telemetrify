@@ -38,7 +38,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION = 5  # v5: top-level training{} block (relayed from AURA Pulse)
-POLL_INTERVAL_S = 5.0
+POLL_INTERVAL_S = 2.0
 VLLM_BASE_URL = os.environ.get("ROCCO_VLLM_BASE_URL", "http://localhost:8000")
 VLLM_PROBE_TIMEOUT_S = 1.0
 STATUS_PATH = Path(

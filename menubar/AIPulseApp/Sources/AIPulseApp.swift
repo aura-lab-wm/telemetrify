@@ -18,7 +18,13 @@ struct AIPulseApp: App {
                     store.start()
                 }
         } label: {
+            // The label exists from launch (the popover content doesn't),
+            // so THIS is what brings polling + the live stream up before
+            // the popover is ever opened — the menubar dot is live
+            // immediately. start() is idempotent; the popover's .task
+            // calling it again is harmless.
             MenuBarIcon(store: store)
+                .task { store.start() }
         }
         .menuBarExtraStyle(.window)
     }

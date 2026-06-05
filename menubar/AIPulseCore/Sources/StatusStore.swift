@@ -33,6 +33,7 @@ public final class StatusStore: ObservableObject {
     private let probe: SSHProbe
     private let probeQueue = DispatchQueue(label: "dev.mastropaolo.ai-pulse.probe", qos: .utility)
     private var timer: Timer?
+    private var streamer: StatusStreamer?
     private let persistenceURL: URL
 
     public init(probe: SSHProbe = SSHProbe(), persistenceURL: URL? = nil) {
@@ -44,11 +45,40 @@ public final class StatusStore: ObservableObject {
     public func start() {
         restartTimer()
         Task { await refresh() }
+        // Idempotent: the popover's .task calls start() on EVERY open —
+        // the watchdog timer restart is harmless, but the live stream
+        // must only ever exist once or each open would leak an ssh.
+        if streamer == nil { startStreamer() }
     }
 
     public func stop() {
         timer?.invalidate()
         timer = nil
+        streamer?.stop()
+        streamer = nil
+    }
+
+    /// Live channel: snapshots arrive moments after rocco-agent writes
+    /// them instead of on the next poll tick. The poll timer above stays
+    /// as the watchdog — if the stream drops (sleep/wake, network) the
+    /// app degrades to exactly the old polling behavior while the
+    /// streamer reconnects.
+    private func startStreamer() {
+        let s = StatusStreamer()
+        s.onStatus = { [weak self] status in
+            Task { @MainActor in self?.applyStreamed(status) }
+        }
+        s.start()
+        streamer = s
+    }
+
+    private func applyStreamed(_ status: RoccoStatus) {
+        lastFetchedAt = Date()
+        snapshot = status
+        gpuHistory.append(gpus: status.gpus)
+        lastError = nil
+        lastErrorKind = nil
+        persist(status: status)
     }
 
     public func refresh() async {

@@ -88,7 +88,11 @@ public struct Service: Equatable, Identifiable, Sendable {
     /// Caller-side helper so the View doesn't have to know the matching
     /// rule (currently first-match-wins, may grow priorities later).
     public func action(for state: ServiceStatus.State) -> ServiceAction? {
-        actions.first { $0.applies(to: state) }
+        let matches = actions.filter { $0.applies(to: state) }
+        // isPrimary decides who owns the gutter button; declaration order
+        // is only the tie-breaker (and the fallback when a state matches
+        // nothing but secondaries).
+        return matches.first(where: \.isPrimary) ?? matches.first
     }
 
     /// ALL actions matching the state, in declaration order. The first

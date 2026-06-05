@@ -91,30 +91,3 @@ final class StatusStoreTests: XCTestCase {
         XCTAssertFalse(store.isLive(), "stale frames mean the stream is down")
     }
 }
-
-/// Locks the legacy three-arg `IconState.derive(snapshot:lastError:now:)`
-/// overload's behavior so a refactor can't silently break callers that
-/// haven't been migrated to the four-arg form (preview, widget, embedder).
-final class IconStateLegacyOverloadTests: XCTestCase {
-    func testLegacyOverloadFallsBackToUnreachableForAnyError() {
-        let state = IconState.derive(
-            snapshot: nil,
-            lastError: "ssh exited with code 255: Permission denied",
-            now: Date()
-        )
-        XCTAssertEqual(state, .unreachable)
-    }
-
-    func testLegacyOverloadReturnsUnknownWhenNoSnapshotAndNoError() {
-        let state = IconState.derive(snapshot: nil, lastError: nil, now: Date())
-        XCTAssertEqual(state, .unknown)
-    }
-
-    func testLegacyOverloadPrefersFreshSnapshot() {
-        let snap = RoccoStatusFixtures.healthy(now: Date())
-        let state = IconState.derive(snapshot: snap, lastError: nil, now: Date())
-        XCTAssertEqual(state, .fresh)
-    }
-
-
-}

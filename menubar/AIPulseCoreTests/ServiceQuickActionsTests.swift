@@ -157,4 +157,26 @@ final class ServiceQuickActionsTests: XCTestCase {
         XCTAssertEqual(svc.action(for: .up)?.command, .quitLocalApp(name: "Ollama"))
         XCTAssertEqual(svc.action(for: .down)?.label, "Start")
     }
+
+    func testPrimaryFlagBeatsDeclarationOrder() {
+        // A secondary declared FIRST must not steal the gutter button.
+        let svc = Service(
+            id: "x", displayName: "x",
+            kind: .fromStatus(path: "vllm.running", label: "x"),
+            actions: [
+                ServiceAction(label: "Kill", showWhen: [.up],
+                              command: .killLocalAgent(label: "l"),
+                              isPrimary: false),
+                ServiceAction(label: "Stop", showWhen: [.up], command: .stopVLLM),
+            ])
+        XCTAssertEqual(svc.action(for: .up)?.label, "Stop")
+        // states matching ONLY secondaries still get a button (fallback)
+        let onlySecondary = Service(
+            id: "y", displayName: "y",
+            kind: .fromStatus(path: "vllm.running", label: "y"),
+            actions: [ServiceAction(label: "Restart", showWhen: [.down],
+                                    command: .sshRestartUnit(host: "h", unit: "u"),
+                                    isPrimary: false)])
+        XCTAssertEqual(onlySecondary.action(for: .down)?.label, "Restart")
+    }
 }

@@ -1,19 +1,13 @@
 import Foundation
 import Combine
 
-public enum PollInterval: Int, CaseIterable, Identifiable, Sendable {
+/// Watchdog cadence for the fallback poll loop. The footer picker that
+/// exposed this died with the live stream — the labels/CaseIterable went
+/// with it. Values are seconds.
+public enum PollInterval: Int, Sendable {
     case fast = 5
     case normal = 15
     case slow = 60
-
-    public var id: Int { rawValue }
-    public var label: String {
-        switch self {
-        case .fast: return "5s"
-        case .normal: return "15s (default)"
-        case .slow: return "60s"
-        }
-    }
 }
 
 /// Owns the timer-driven `SSHProbe` poll loop, publishes the latest

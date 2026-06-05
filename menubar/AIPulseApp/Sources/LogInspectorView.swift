@@ -307,7 +307,6 @@ struct LogInspectorView: View {
 
 @MainActor
 private final class LogInspectorModel: ObservableObject {
-    @Published var text: String = ""
     @Published var isLoading: Bool = false
     @Published var insight = LogInsight.empty
     @Published var lines: [LogLine] = []
@@ -318,11 +317,9 @@ private final class LogInspectorModel: ObservableObject {
         defer { isLoading = false }
         do {
             let loaded = try await loadText(file)
-            text = loaded
             lines = LogLine.parse(loaded)
             insight = LogInsight.analyze(loaded)
         } catch {
-            text = error.localizedDescription
             lines = LogLine.parse(error.localizedDescription)
             insight = LogInsight(
                 total: 1,

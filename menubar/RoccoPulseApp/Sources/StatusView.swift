@@ -119,11 +119,8 @@ struct StatusView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    VStack(spacing: 6) {
-                        ForEach(snapshot.gpus, id: \.idx) { gpu in
-                            gpuRow(gpu)
-                        }
-                    }
+                    GPUGridSection(gpus: snapshot.gpus,
+                                   history: store.gpuHistory)
                 }
 
                 if let err = store.lastError, !snapshotIsFresh {
@@ -200,78 +197,6 @@ struct StatusView: View {
     // strict duplication and the user called it out. `runLifecycle` is
     // still imported by the Services prober via ServiceCommandRunner —
     // those affordances flow through the registry now.
-
-    // MARK: - GPU row
-
-    private func gpuRow(_ gpu: RoccoStatus.GPU) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("GPU \(gpu.idx)")
-                    .font(.caption.bold())
-                Text(gpu.name)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-                ViewThatFits(in: .horizontal) {
-                    Text("\(gpu.utilPct)% util · \(Int(gpu.memPctUsed))% mem · \(gpu.tempC)°C")
-                    Text("\(gpu.utilPct)% · \(Int(gpu.memPctUsed))% · \(gpu.tempC)°")
-                }
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.secondary)
-            }
-            // Unified usage bar: util on top half, mem on bottom half,
-            // ZERO gap between them so the two bands read as ONE
-            // continuous strip. Previous design had a 2pt gap that the
-            // user (rightly) called out as visual noise — at 4pt-each
-            // band heights the gap was as tall as the data itself.
-            UnifiedUsageBar(
-                utilPct: Double(gpu.utilPct) / 100.0,
-                memPct: gpu.memPctUsed / 100.0
-            )
-        }
-    }
-
-    /// 8pt-tall capsule track split horizontally into two flush 4pt
-    /// bands — top = util (blue), bottom = mem (purple). One Shape,
-    /// one track, no inter-band whitespace. Clamps to [0,1].
-    private struct UnifiedUsageBar: View {
-        let utilPct: Double
-        let memPct: Double
-
-        var body: some View {
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-                let halfH = h / 2
-                let clampedUtil = max(0, min(utilPct, 1))
-                let clampedMem  = max(0, min(memPct, 1))
-                ZStack(alignment: .topLeading) {
-                    // single continuous track — capsule on the outside
-                    Capsule(style: .continuous)
-                        .fill(Color.primary.opacity(0.10))
-                    // top band — util fill (rectangle, no inner capsule
-                    // so it sits flush against the bottom band)
-                    Rectangle()
-                        .fill(Color.blue)
-                        .frame(width: w * clampedUtil, height: halfH)
-                        .position(x: w * clampedUtil / 2, y: halfH / 2)
-                    // bottom band — mem fill, flush against util above
-                    Rectangle()
-                        .fill(Color.purple)
-                        .frame(width: w * clampedMem, height: halfH)
-                        .position(x: w * clampedMem / 2, y: halfH + halfH / 2)
-                }
-                .clipShape(Capsule(style: .continuous))
-            }
-            .frame(height: 8)
-            .accessibilityLabel("GPU usage")
-            .accessibilityValue(
-                "util \(Int(max(0, min(utilPct, 1)) * 100)) percent, " +
-                "memory \(Int(max(0, min(memPct, 1)) * 100)) percent")
-        }
-    }
 
     // MARK: - Footer
 

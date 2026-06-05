@@ -1,13 +1,13 @@
-# rocco-pulse — macOS menubar app build/test/install
+# AI-Pulse — macOS menubar app build/test/install
 #
 # `make install` is what humans should run after they've set up the
 # Rocco-side agent and their ~/.ssh/config (see README.md).
-PROJECT := rocco-pulse.xcodeproj
+PROJECT := ai-pulse.xcodeproj
 SCHEME_CORE := RoccoPulseCore
 SCHEME_APP  := RoccoPulseApp
 DERIVED := build
-APP_PATH := $(DERIVED)/Build/Products/Release/rocco-pulse.app
-INSTALL_DEST := /Applications/rocco-pulse.app
+APP_PATH := $(DERIVED)/Build/Products/Release/AI-Pulse.app
+INSTALL_DEST := /Applications/AI-Pulse.app
 
 XCODEGEN := $(shell command -v xcodegen 2>/dev/null)
 

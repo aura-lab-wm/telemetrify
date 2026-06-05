@@ -1,6 +1,6 @@
 > ## ⚠️ DEPRECATED (2026-05-25) — folded into AURA Pulse
 >
-> The standalone **rocco-pulse** menu-bar app is retired. Its control surface —
+> The standalone **AI-Pulse** menu-bar app is retired. Its control surface —
 > vLLM **Start/Stop**, the **model picker**, and the GPU/tier display — now lives
 > in **AURA Pulse** (`~/Projects/aura-pulse`) as the **Controls** section
 > (admin-only; window + menubar deep-link). AURA reads everything from its own
@@ -12,17 +12,17 @@
 > is **NOT** retired — the Claude Code prompt-submit hook still reads it. Migrate
 > that hook to AURA's `/v1/export` before retiring `rocco-agent`.
 >
-> Below is the original rocco-pulse documentation, kept for reference.
+> Below is the original AI-Pulse documentation, kept for reference.
 
 ---
 
-# rocco-pulse — telemetrify's operational dashboard for its remote LLM backend
+# AI-Pulse — telemetrify's operational dashboard for its remote LLM backend
 
 This is **not a standalone tray app.** It's a subordinate of the parent
 [`telemetrify`](../README.md) project, and it exists because telemetrify runs
 its heavy LLM inference (`/ask`, planner, synthesizer) on **Rocco** — a shared
 CS-lab GPU server that hosts a 72B-parameter model (Kimi-Dev-72B BF16, ~145 GB,
-4× L40S). Without rocco-pulse you have no visible signal whether your next
+4× L40S). Without AI-Pulse you have no visible signal whether your next
 `/ask` call will land on Rocco (free, fast, private) or silently fall through
 to your Anthropic OAuth bucket (paid, rate-limited, leaves the box).
 
@@ -82,16 +82,16 @@ that the inference rig is hot before you even open the popover.
    make install
    ```
    `make install` runs `xcodegen generate`, builds Release, copies the .app
-   to `/Applications/rocco-pulse.app`, and opens it. The menubar icon
+   to `/Applications/AI-Pulse.app`, and opens it. The menubar icon
    appears within ~2s.
 
 ## Common make targets
 
 | Command | What it does |
 | --- | --- |
-| `make generate` | regenerate `rocco-pulse.xcodeproj` from `project.yml` |
+| `make generate` | regenerate `AI-Pulse.xcodeproj` from `project.yml` |
 | `make test` | run `RoccoPulseCoreTests` (23 tests, no SSH, no GPU) |
-| `make build` | Debug build to `build/Build/Products/Debug/rocco-pulse.app` |
+| `make build` | Debug build to `build/Build/Products/Debug/AI-Pulse.app` |
 | `make release` | Release build |
 | `make install` | Release + copy to `/Applications` + open |
 | `make clean` | wipe derived data and the generated xcodeproj |
@@ -105,7 +105,7 @@ that the inference rig is hot before you even open the popover.
   fork a real `ssh`.
 * **`StatusStore`** — `@MainActor` `ObservableObject` driven by a `Timer`
   (default 15s, toggleable to 5s / 60s from the popover footer). Persists
-  the last good snapshot to `Application Support/rocco-pulse/last.json` so
+  the last good snapshot to `Application Support/AI-Pulse/last.json` so
   the UI still shows "last seen 12 min ago" after a relaunch.
 * **`MenuBarIcon`** — derives both the SF Symbol and the `.foregroundStyle`
   color from `(snapshot, lastError, freshness)` via `IconState` +
@@ -136,4 +136,4 @@ that the inference rig is hot before you even open the popover.
 * No Settings UI — `pollInterval` and persistence path are toggleable
   in-code only.
 * No "Launch at login" registration — register manually via
-  System Settings → Login Items → "+" → `/Applications/rocco-pulse.app`.
+  System Settings → Login Items → "+" → `/Applications/AI-Pulse.app`.

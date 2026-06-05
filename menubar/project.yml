@@ -1,4 +1,4 @@
-name: rocco-pulse
+name: ai-pulse
 options:
   bundleIdPrefix: dev.mastropaolo
   deploymentTarget:
@@ -21,7 +21,7 @@ targets:
       path: RoccoPulseCore/Info.plist
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.rocco-pulse.core
+        PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.ai-pulse.core
         DEFINES_MODULE: YES
 
   RoccoPulseApp:
@@ -44,8 +44,8 @@ targets:
       - target: RoccoPulseCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.rocco-pulse
-        PRODUCT_NAME: rocco-pulse
+        PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.ai-pulse
+        PRODUCT_NAME: AI-Pulse
         INFOPLIST_FILE: RoccoPulseApp/Info.plist
 
   RoccoPulseCoreTests:
@@ -62,7 +62,7 @@ targets:
       - target: RoccoPulseCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.rocco-pulse.core.tests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.ai-pulse.core.tests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:

@@ -6,8 +6,8 @@ import RoccoPulseCore
 ///   • Header                          → app name + last-fetch chip
 ///   • Tier badge                      → "Tier 4 — 4 GPUs free"
 ///   • vLLM row                        → status + Start/Stop button
-///   • GPU rows                        → util + mem bars stacked on a track
-///                                       so they're visible even at 0%
+///   • GPU section                     → KPI strip + 2×2 ring-gauge grid
+///                                       with memory sparklines
 ///   • Diagnosis banner (conditional)  → install hint or error w/ stderr
 ///   • Lifecycle notice (conditional)  → result of last Start/Stop click,
 ///                                       dismissable, NEVER overlays footer

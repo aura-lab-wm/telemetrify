@@ -9,7 +9,7 @@ struct GPUGridSection: View {
     let gpus: [RoccoStatus.GPU]
     let history: GPUHistory
 
-    private let columns = [
+    private static let columns = [
         GridItem(.flexible(), spacing: 8),
         GridItem(.flexible(), spacing: 8),
     ]
@@ -19,7 +19,8 @@ struct GPUGridSection: View {
             if let summary = GPUSummary(gpus: gpus) {
                 KPIStrip(summary: summary)
             }
-            LazyVGrid(columns: columns, spacing: 8) {
+            // No ScrollView wrapper: the grid is eager and width is concrete from the popover frame, so the ServicesSection collapse issue doesn't apply.
+            LazyVGrid(columns: Self.columns, spacing: 8) {
                 ForEach(gpus, id: \.idx) { gpu in
                     GPUCell(gpu: gpu, memSamples: history.samples(for: gpu.idx))
                 }
@@ -57,6 +58,9 @@ private struct KPIStrip: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(color.opacity(0.09))
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
     }
 }
 

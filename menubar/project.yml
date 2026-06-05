@@ -12,26 +12,26 @@ settings:
     CODE_SIGN_STYLE: Automatic
     CODE_SIGNING_ALLOWED: NO
 targets:
-  RoccoPulseCore:
+  AIPulseCore:
     type: framework
     platform: macOS
     sources:
-      - RoccoPulseCore/Sources
+      - AIPulseCore/Sources
     info:
-      path: RoccoPulseCore/Info.plist
+      path: AIPulseCore/Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.ai-pulse.core
         DEFINES_MODULE: YES
 
-  RoccoPulseApp:
+  AIPulseApp:
     type: application
     platform: macOS
     sources:
-      - RoccoPulseApp/Sources
-      - RoccoPulseApp/Resources/Assets.xcassets
+      - AIPulseApp/Sources
+      - AIPulseApp/Resources/Assets.xcassets
     info:
-      path: RoccoPulseApp/Info.plist
+      path: AIPulseApp/Info.plist
       properties:
         LSUIElement: true
         LSMinimumSystemVersion: "14.0"
@@ -41,42 +41,42 @@ targets:
         CFBundleVersion: "1"
         NSHumanReadableCopyright: "© 2026 Antonio Mastropaolo"
     dependencies:
-      - target: RoccoPulseCore
+      - target: AIPulseCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.ai-pulse
         PRODUCT_NAME: AI-Pulse
-        INFOPLIST_FILE: RoccoPulseApp/Info.plist
+        INFOPLIST_FILE: AIPulseApp/Info.plist
 
-  RoccoPulseCoreTests:
+  AIPulseCoreTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: RoccoPulseCoreTests
+      - path: AIPulseCoreTests
         excludes:
           - "Fixtures/**"
-      - path: RoccoPulseCoreTests/Fixtures
+      - path: AIPulseCoreTests/Fixtures
         type: folder
         buildPhase: resources
     dependencies:
-      - target: RoccoPulseCore
+      - target: AIPulseCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.mastropaolo.ai-pulse.core.tests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
-  RoccoPulseCore:
+  AIPulseCore:
     build:
       targets:
-        RoccoPulseCore: all
-        RoccoPulseCoreTests: [test]
+        AIPulseCore: all
+        AIPulseCoreTests: [test]
     test:
       targets:
-        - RoccoPulseCoreTests
-  RoccoPulseApp:
+        - AIPulseCoreTests
+  AIPulseApp:
     build:
       targets:
-        RoccoPulseApp: all
+        AIPulseApp: all
     run:
       config: Debug

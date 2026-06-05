@@ -42,13 +42,13 @@ that the inference rig is hot before you even open the popover.
 
 ```
 ~/Projects/telemetrify/menubar/
-├── project.yml                  xcodegen spec (RoccoPulseCore + RoccoPulseApp)
+├── project.yml                  xcodegen spec (AIPulseCore + AIPulseApp)
 ├── Makefile                     generate / test / build / install
-├── RoccoPulseCore/Sources/      RoccoStatus · SSHProbe · StatusStore ·
+├── AIPulseCore/Sources/      RoccoStatus · SSHProbe · StatusStore ·
 │                                LifecycleCommands · TierPalette · ProcessLauncher
-├── RoccoPulseApp/Sources/       RoccoPulseApp (@main) · AppDelegate ·
+├── AIPulseApp/Sources/       AIPulseApp (@main) · AppDelegate ·
 │                                StatusView · MenuBarIcon
-├── RoccoPulseCoreTests/         5 XCTest files + JSON fixtures
+├── AIPulseCoreTests/         5 XCTest files + JSON fixtures
 └── rocco-agent/                 Python agent that runs on Rocco itself
                                  (managed by the parallel Track-B agent task)
 ```
@@ -90,7 +90,7 @@ that the inference rig is hot before you even open the popover.
 | Command | What it does |
 | --- | --- |
 | `make generate` | regenerate `AI-Pulse.xcodeproj` from `project.yml` |
-| `make test` | run `RoccoPulseCoreTests` (23 tests, no SSH, no GPU) |
+| `make test` | run `AIPulseCoreTests` (23 tests, no SSH, no GPU) |
 | `make build` | Debug build to `build/Build/Products/Debug/AI-Pulse.app` |
 | `make release` | Release build |
 | `make install` | Release + copy to `/Applications` + open |

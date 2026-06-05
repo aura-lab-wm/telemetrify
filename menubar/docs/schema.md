@@ -1,7 +1,7 @@
 # Rocco status JSON schema (v1)
 
 The Rocco-side agent writes this document to `~/.cache/rocco-status.json`
-every ~5s. The Swift menubar app (`RoccoPulseCore/Sources/RoccoStatus.swift`)
+every ~5s. The Swift menubar app (`AIPulseCore/Sources/RoccoStatus.swift`)
 decodes it verbatim.
 
 ```jsonc

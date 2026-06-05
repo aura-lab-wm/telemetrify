@@ -3,8 +3,8 @@
 # `make install` is what humans should run after they've set up the
 # Rocco-side agent and their ~/.ssh/config (see README.md).
 PROJECT := ai-pulse.xcodeproj
-SCHEME_CORE := RoccoPulseCore
-SCHEME_APP  := RoccoPulseApp
+SCHEME_CORE := AIPulseCore
+SCHEME_APP  := AIPulseApp
 DERIVED := build
 APP_PATH := $(DERIVED)/Build/Products/Release/AI-Pulse.app
 INSTALL_DEST := /Applications/AI-Pulse.app
@@ -16,7 +16,7 @@ XCODEGEN := $(shell command -v xcodegen 2>/dev/null)
 help:
 	@echo "Targets:"
 	@echo "  make generate   regenerate the Xcode project from project.yml"
-	@echo "  make test       run RoccoPulseCoreTests"
+	@echo "  make test       run AIPulseCoreTests"
 	@echo "  make build      build the app (Debug)"
 	@echo "  make release    build the app (Release)"
 	@echo "  make install    Release build + copy to /Applications + open"

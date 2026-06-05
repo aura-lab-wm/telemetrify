@@ -202,27 +202,13 @@ struct StatusView: View {
 
     // MARK: - Footer
 
+    /// Three evenly-spaced elements, one fixed row: Refresh · live badge ·
+    /// Quit. The Poll picker is gone — data arrives over the push stream
+    /// now and the 15s poll is just the watchdog, so the cadence isn't an
+    /// operator decision anymore. (ViewThatFits is gone too: its
+    /// row↔stack re-layout was one of the flicker sources.)
     private var footer: some View {
-        ViewThatFits(in: .horizontal) {
-            footerRow
-            VStack(alignment: .leading, spacing: 8) {
-                footerRefreshRow
-                footerControls
-            }
-        }
-        .font(.caption)
-    }
-
-    private var footerRow: some View {
-        HStack(spacing: 8) {
-            footerRefreshRow
-            Spacer(minLength: 4)
-            footerControls
-        }
-    }
-
-    private var footerRefreshRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Button {
                 Task { await store.refresh() }
             } label: {
@@ -230,22 +216,37 @@ struct StatusView: View {
                     .labelStyle(.titleAndIcon)
             }
             .controlSize(.small)
-        }
-    }
-
-    private var footerControls: some View {
-        HStack(spacing: 8) {
-            Picker("Poll", selection: $store.pollInterval) {
-                ForEach(PollInterval.allCases) { interval in
-                    Text(interval.label).tag(interval)
-                }
-            }
-            .pickerStyle(.menu)
-            .controlSize(.small)
-            .frame(minWidth: 128, idealWidth: 150, maxWidth: 170)
+            Spacer(minLength: 8)
+            liveBadge
+            Spacer(minLength: 8)
             Button("Quit") { NSApp.terminate(nil) }
                 .controlSize(.small)
         }
+        .font(.caption)
+    }
+
+    /// Stream health at a glance: green "Live · 2s" while push frames are
+    /// flowing, orange "Polling · 15s" when the watchdog has taken over.
+    private var liveBadge: some View {
+        let live = store.isLive()
+        return HStack(spacing: 5) {
+            Circle()
+                .fill(live ? Color.green : Color.orange)
+                .frame(width: 7, height: 7)
+            Text(live ? "Live · 2s" : "Polling · 15s")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(
+            Capsule().fill((live ? Color.green : Color.orange).opacity(0.10))
+        )
+        .help(live
+              ? "Receiving pushed snapshots over the persistent SSH stream"
+              : "Stream down — falling back to 15s polling while it reconnects")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(live ? "Live stream connected" : "Polling fallback")
     }
 
     // MARK: - Failure diagnosis

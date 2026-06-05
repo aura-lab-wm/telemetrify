@@ -23,6 +23,8 @@ public enum PollInterval: Int, CaseIterable, Identifiable, Sendable {
 public final class StatusStore: ObservableObject {
     @Published public private(set) var snapshot: RoccoStatus?
     @Published public private(set) var gpuHistory = GPUHistory()
+    /// When the last LIVE frame arrived. internal(set) so tests can pin it.
+    @Published public internal(set) var lastStreamFrameAt: Date?
     @Published public private(set) var lastError: String?
     @Published public private(set) var lastErrorKind: SSHProbeErrorKind?
     @Published public private(set) var lastFetchedAt: Date?
@@ -74,6 +76,7 @@ public final class StatusStore: ObservableObject {
 
     private func applyStreamed(_ status: RoccoStatus) {
         lastFetchedAt = Date()
+        lastStreamFrameAt = lastFetchedAt
         snapshot = status
         gpuHistory.append(gpus: status.gpus)
         lastError = nil
@@ -111,6 +114,14 @@ public final class StatusStore: ObservableObject {
             // ("try ssh-add" for problems that aren't SSH at all).
             self.lastErrorKind = (error as? SSHProbeError)?.kind ?? .unknown
         }
+    }
+
+    /// True while the push stream is delivering: a frame landed within
+    /// the last 10s (agent writes every 2s; 10s = several missed beats).
+    /// When false the app is on the polling watchdog.
+    public func isLive(now: Date = Date()) -> Bool {
+        guard let t = lastStreamFrameAt else { return false }
+        return now.timeIntervalSince(t) < 10
     }
 
     private func restartTimer() {

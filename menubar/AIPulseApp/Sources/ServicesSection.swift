@@ -722,22 +722,25 @@ final class ServicesViewModel: ObservableObject {
     func bind(store: StatusStore) { self.store = store }
 
     func refresh(snapshot: RoccoStatus?, scope: Service.Scope) async {
-        isBusy = true
-        defer { isBusy = false }
         let result = ServiceRegistry(services: ServiceRegistry.builtins())
             .merging(discovered: snapshot?.services ?? [])
         let services = result.known.services.filter { $0.scope == scope }
-        // Synthesize cheap rows IMMEDIATELY so the section shows
-        // something even before the SSH/HTTP probes complete (~5s
-        // worst-case). Then update each row's status as the probe
-        // finishes — but since SwiftUI redraws on every @Published
-        // mutation, batching at the end is cheaper. Compromise:
-        // publish a "checking…" pass first, then the real states.
-        rows = services.map {
-            Row(service: $0,
-                status: ServiceStatus(state: .unknown, summary: "checking…"))
+        // The live stream re-runs this every ~2s. Resetting rows to
+        // "checking…" placeholders on EVERY pass made the whole section
+        // strobe; placeholders (and the header spinner) now appear only
+        // when the row set actually changes — background re-probes keep
+        // showing the previous states until fresh ones land.
+        let structureChanged = rows.map(\.service.id) != services.map(\.id)
+        if structureChanged {
+            isBusy = true
+            rows = services.map {
+                Row(service: $0,
+                    status: ServiceStatus(state: .unknown, summary: "checking…"))
+            }
         }
-        unknownPorts = scope == .rocco ? result.unknown : []
+        defer { if structureChanged { isBusy = false } }
+        let newUnknown = scope == .rocco ? result.unknown : []
+        if unknownPorts != newUnknown { unknownPorts = newUnknown }
 
         // Probe in PARALLEL — the wait is the slowest single probe
         // (~1s SSH worst-case), not the sum of all of them. Results
@@ -753,10 +756,15 @@ final class ServicesViewModel: ObservableObject {
             for await (i, status) in group { out[i] = status }
             return out
         }
-        rows = zip(services, statuses).map { svc, status in
+        let newRows = zip(services, statuses).map { svc, status in
             Row(service: svc,
                 status: status ?? ServiceStatus(state: .unknown, summary: "checking…"))
         }
+        // Skip the publish when nothing changed — @Published fires
+        // objectWillChange on every assignment, flicker included.
+        let changed = newRows.count != rows.count
+            || zip(newRows, rows).contains { $0.status != $1.status || $0.service != $1.service }
+        if changed { rows = newRows }
     }
 
     /// Run the chosen action with immediate visual feedback. Three

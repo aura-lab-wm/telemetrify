@@ -59,6 +59,37 @@ final class StatusStoreTests: XCTestCase {
             "non-SSHProbeError must NOT be misclassified as .sshFailed — that hint sends the user to ssh-add for problems that aren't SSH")
         XCTAssertNotNil(store.lastError)
     }
+
+    func testLegacyCacheMigratesOnceAndNeverOverwrites() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory
+            .appendingPathComponent("ai-pulse-migrate-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        let legacy = dir.appendingPathComponent("legacy.json")
+        let current = dir.appendingPathComponent("current.json")
+        try Data("old".utf8).write(to: legacy)
+
+        StatusStore.migrateLegacyCache(legacy: legacy, current: current)
+        XCTAssertTrue(fm.fileExists(atPath: current.path))
+        XCTAssertFalse(fm.fileExists(atPath: legacy.path))
+
+        try Data("newer".utf8).write(to: legacy)
+        StatusStore.migrateLegacyCache(legacy: legacy, current: current)
+        XCTAssertEqual(try String(contentsOf: current, encoding: .utf8), "old",
+                       "an existing cache must never be overwritten")
+    }
+
+    func testIsLiveTracksRecentStreamFrames() {
+        let (store, _) = makeStore()
+        XCTAssertFalse(store.isLive(), "no frames yet -> watchdog mode")
+
+        store.lastStreamFrameAt = Date()
+        XCTAssertTrue(store.isLive())
+
+        store.lastStreamFrameAt = Date(timeIntervalSinceNow: -30)
+        XCTAssertFalse(store.isLive(), "stale frames mean the stream is down")
+    }
 }
 
 /// Locks the legacy three-arg `IconState.derive(snapshot:lastError:now:)`
@@ -85,23 +116,5 @@ final class IconStateLegacyOverloadTests: XCTestCase {
         XCTAssertEqual(state, .fresh)
     }
 
-    func testLegacyCacheMigratesOnceAndNeverOverwrites() throws {
-        let fm = FileManager.default
-        let dir = fm.temporaryDirectory
-            .appendingPathComponent("ai-pulse-migrate-\(UUID().uuidString)", isDirectory: true)
-        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: dir) }
-        let legacy = dir.appendingPathComponent("legacy.json")
-        let current = dir.appendingPathComponent("current.json")
-        try Data("old".utf8).write(to: legacy)
 
-        StatusStore.migrateLegacyCache(legacy: legacy, current: current)
-        XCTAssertTrue(fm.fileExists(atPath: current.path))
-        XCTAssertFalse(fm.fileExists(atPath: legacy.path))
-
-        try Data("newer".utf8).write(to: legacy)
-        StatusStore.migrateLegacyCache(legacy: legacy, current: current)
-        XCTAssertEqual(try String(contentsOf: current, encoding: .utf8), "old",
-                       "an existing cache must never be overwritten")
-    }
 }

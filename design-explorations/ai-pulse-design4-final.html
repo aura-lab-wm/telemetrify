@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Pulse — Design 4 "Data-Viz Forward" · Final Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================ DESIGN TOKENS ============================ */
+:root{
+  --page-bg:#0a0b0f;
+  --ink:#e7e9ef;
+  --ink-dim:#9aa0ad;
+  --hair:rgba(255,255,255,.08);
+
+  /* Data-Viz Forward popover tokens */
+  --d4-bg1:#10131c;
+  --d4-bg2:#0a0c12;
+  --d4-ink:#dfe3ee;
+  --d4-ink-dim:#7b8398;
+  --d4-ink-mute:#6b7286;
+  --d4-card:rgba(255,255,255,.03);
+  --d4-card2:rgba(255,255,255,.02);
+  --d4-hair:rgba(255,255,255,.08);
+  --d4-hair-soft:rgba(255,255,255,.06);
+  --d4-accent:#7aa2ff;       /* brand blue */
+  --d4-util:#ff5fb4;         /* magenta util ring */
+  --d4-mem:#56d2ff;          /* cyan memory */
+  --d4-ok:#3ddc84;           /* running */
+  --d4-stop:#ff5f5f;         /* stopped */
+  --d4-warn:#ffb454;         /* warning / transitioning */
+  --d4-info:#7fb4ff;
+  --d4-error:#ff6b6b;
+  --gutter:44px;             /* fixed action-gutter width — THE rule */
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:
+    radial-gradient(1200px 700px at 12% -10%, #1c2340 0%, transparent 55%),
+    radial-gradient(1000px 600px at 100% 0%, #2a1640 0%, transparent 50%),
+    var(--page-bg);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  line-height:1.5;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:64px 28px 120px;}
+
+/* ============================ PAGE HEADER ============================ */
+.page-head{margin-bottom:28px;}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:#8ea0ff;background:rgba(120,140,255,.1);
+  border:1px solid rgba(120,140,255,.22);
+  padding:6px 12px;border-radius:999px;margin-bottom:22px;
+}
+.eyebrow .dot{width:7px;height:7px;border-radius:50%;background:#7c8cff;box-shadow:0 0 10px #7c8cff;}
+h1.title{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:50px;line-height:1.04;font-weight:700;margin:0 0 18px;letter-spacing:-.02em;
+  background:linear-gradient(92deg,#fff 0%,#bcc6ff 45%,#ff9ad6 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.lede{font-size:17px;color:var(--ink-dim);max-width:760px;}
+.lede strong{color:var(--ink);font-weight:600;}
+
+.callout{
+  margin-top:26px;border:1px solid rgba(255,180,60,.28);background:rgba(255,180,60,.07);
+  border-radius:14px;padding:18px 20px;max-width:860px;
+}
+.callout h4{margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#ffce8a;
+  font-weight:700;display:flex;align-items:center;gap:8px;}
+.callout p{margin:0;font-size:14.5px;color:#d7cbb4;}
+.callout p strong{color:#fff;}
+
+.toc{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px;}
+.toc a{
+  font-size:13px;font-weight:600;color:var(--ink-dim);text-decoration:none;
+  border:1px solid var(--hair);padding:8px 14px;border-radius:10px;
+  background:rgba(255,255,255,.02);transition:.18s;
+}
+.toc a:hover{color:#fff;border-color:rgba(140,160,255,.5);background:rgba(140,160,255,.1);transform:translateY(-1px);}
+.toc a span{color:#5b6478;margin-right:8px;font-variant-numeric:tabular-nums;}
+
+/* ============================ SECTION SHELL ============================ */
+.design{margin-top:84px;scroll-margin-top:30px;}
+.design-head{display:flex;align-items:baseline;gap:18px;margin-bottom:6px;flex-wrap:wrap;}
+.num{
+  font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;
+  color:#0a0b0f;background:linear-gradient(135deg,#8ea0ff,#ff9ad6);
+  width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  flex:none;align-self:center;
+}
+.design h2{font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;margin:0;letter-spacing:-.01em;}
+.tagline{font-size:14px;color:#8ea0ff;font-weight:600;}
+.rationale{color:var(--ink-dim);font-size:15px;max-width:820px;margin:14px 0 0;}
+.rationale code{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#aeb8ff;
+  background:rgba(140,160,255,.1);padding:1px 6px;border-radius:5px;}
+
+.design-body{display:grid;grid-template-columns:minmax(0,520px) 1fr;gap:40px;align-items:start;margin-top:30px;}
+@media(max-width:980px){.design-body{grid-template-columns:1fr;}}
+
+.stage{
+  border-radius:24px;padding:46px 30px;display:flex;justify-content:center;
+  border:1px solid var(--hair);position:relative;overflow:hidden;
+  background:radial-gradient(600px 400px at 50% 0%,#1a1d2b,#0b0c12);
+}
+.stage::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 120px rgba(0,0,0,.35);}
+.stage.wide{grid-column:1 / -1;}
+
+.notes{position:sticky;top:24px;}
+.notes h3{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#6b7488;margin:0 0 16px;font-weight:700;}
+.notes ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px;}
+.notes li{font-size:14px;color:var(--ink-dim);padding-left:26px;position:relative;line-height:1.5;}
+.notes li::before{content:"";position:absolute;left:0;top:7px;width:8px;height:8px;border-radius:2px;
+  background:linear-gradient(135deg,#8ea0ff,#ff9ad6);}
+.notes li b{color:var(--ink);font-weight:600;}
+.notes code{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#aeb8ff;
+  background:rgba(140,160,255,.1);padding:1px 6px;border-radius:5px;}
+
+/* ============================ POPOVER FRAME (Data-Viz Forward) ============================ */
+.pop{width:480px;border-radius:18px;overflow:hidden;position:relative;
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.7),0 0 0 .5px rgba(255,255,255,.06);}
+.d4{font-family:'Inter',sans-serif;background:linear-gradient(180deg,var(--d4-bg1),var(--d4-bg2));
+  color:var(--d4-ink);border:.5px solid var(--d4-hair);}
+.d4 .pad{padding:18px 20px;}
+.d4 .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.d4 .app{font-size:16px;font-weight:700;display:flex;align-items:center;gap:9px;}
+.d4 .app .ring{width:22px;height:22px;border-radius:50%;
+  background:conic-gradient(var(--d4-accent) 0% 70%,rgba(255,255,255,.1) 70% 100%);
+  -webkit-mask:radial-gradient(circle 6px,transparent 98%,#000 100%);mask:radial-gradient(circle 6px,transparent 98%,#000 100%);}
+.d4 .ts{font-size:12px;color:var(--d4-ink-mute);font-variant-numeric:tabular-nums;}
+.d4 .seg{display:flex;gap:6px;margin-bottom:14px;}
+.d4 .seg button{flex:1;border:.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);
+  font:inherit;font-size:12.5px;font-weight:600;color:var(--d4-ink-dim);padding:8px;border-radius:10px;cursor:pointer;transition:.16s;}
+.d4 .seg button.on{color:#fff;background:rgba(122,162,255,.16);border-color:rgba(122,162,255,.5);}
+.d4 .kpis{display:flex;gap:10px;margin-bottom:16px;}
+.d4 .kpi{flex:1;border:.5px solid var(--d4-hair);border-radius:12px;padding:10px 12px;background:var(--d4-card2);}
+.d4 .kpi .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--d4-ink-mute);}
+.d4 .kpi .v{font-size:20px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;}
+.d4 .kpi .v.warn{color:var(--d4-warn);}
+.d4 .tier{font-size:12px;color:#ffce8a;background:rgba(255,180,60,.08);border:.5px solid rgba(255,180,60,.2);
+  padding:8px 11px;border-radius:10px;margin-bottom:16px;display:flex;gap:8px;align-items:center;}
+.d4 .ggrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.d4 .gcard{border:.5px solid var(--d4-hair);border-radius:14px;padding:13px;background:var(--d4-card2);display:flex;gap:12px;align-items:center;}
+.d4 .gauge{width:58px;height:58px;flex:none;position:relative;}
+.d4 .gauge svg{transform:rotate(-90deg);}
+.d4 .gauge .ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.d4 .gauge .ctr .pct{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;}
+.d4 .gauge .ctr .u{font-size:8px;color:var(--d4-ink-mute);letter-spacing:.08em;margin-top:2px;}
+.d4 .gcard .meta{min-width:0;}
+.d4 .gcard .meta .id{font-size:13px;font-weight:700;}
+.d4 .gcard .meta .mod{font-size:10px;color:var(--d4-ink-mute);margin:1px 0 7px;}
+.d4 .spark{display:flex;align-items:flex-end;gap:2px;height:20px;}
+.d4 .spark i{width:3px;border-radius:1px;background:linear-gradient(180deg,var(--d4-mem),#2e8fff);opacity:.85;}
+.d4 .gcard .temp{font-size:10.5px;color:var(--d4-ink-mute);margin-top:5px;font-variant-numeric:tabular-nums;}
+.d4 .gcard .temp b{color:#ff8a5c;}
+.d4 .sec{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--d4-ink-mute);font-weight:700;margin:18px 0 10px;
+  display:flex;align-items:center;justify-content:space-between;}
+.d4 .sec .hint{font-size:9.5px;letter-spacing:.04em;text-transform:none;color:#56607a;font-weight:500;}
+
+/* ---- THE CARD + GUTTER LAYOUT RULE ---- */
+/* A service "row" is an HStack: [ card (flex:1) ] [ gutter (fixed 44px) ]. */
+.d4 .svc-row{display:flex;align-items:stretch;gap:8px;margin-bottom:8px;}
+.d4 .svc-card{
+  flex:1;min-width:0;display:flex;align-items:center;gap:11px;
+  padding:10px 8px 10px 12px;border-radius:12px;
+  background:var(--d4-card);border:.5px solid var(--d4-hair-soft);
+}
+.d4 .svc-card .led{width:9px;height:9px;border-radius:50%;flex:none;}
+.d4 .svc-card .led.g{background:var(--d4-ok);box-shadow:0 0 8px var(--d4-ok);}
+.d4 .svc-card .led.r{background:var(--d4-stop);box-shadow:0 0 8px var(--d4-stop);}
+.d4 .svc-card .led.w{background:var(--d4-warn);box-shadow:0 0 8px var(--d4-warn);
+  animation:pulse 1.1s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+.d4 .svc-card .body{min-width:0;flex:1;}
+.d4 .svc-card .nm{font-size:14px;font-weight:600;}
+.d4 .svc-card .st{font-size:12px;color:var(--d4-ink-dim);}
+.d4 .svc-card .st.warn{color:var(--d4-warn);}
+.d4 .svc-card .st.run{color:var(--d4-ok);}
+/* Spotlight / log button: ALWAYS the trailing element INSIDE the card. Fixed slot. Never moves. */
+.d4 .spotlight{
+  width:28px;height:28px;border-radius:8px;flex:none;margin-left:auto;
+  border:.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);
+  color:#aeb6c8;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.16s;
+}
+.d4 .spotlight:hover{background:rgba(122,162,255,.18);border-color:rgba(122,162,255,.45);color:#fff;}
+/* The fixed-width action gutter OUTSIDE the card. Width is always reserved. */
+.d4 .gutter{width:var(--gutter);flex:none;display:flex;align-items:center;justify-content:center;}
+.d4 .gbtn{
+  width:36px;height:36px;border-radius:10px;border:0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:14px;transition:.16s;
+}
+.d4 .gbtn.start{color:#fff;background:linear-gradient(180deg,#7aa2ff,#5c84eb);box-shadow:0 3px 10px rgba(60,110,255,.4);}
+.d4 .gbtn.start:hover{filter:brightness(1.08);transform:translateY(-1px);}
+.d4 .gbtn.stop{color:#ffb0b0;background:rgba(255,95,95,.14);border:.5px solid rgba(255,95,95,.32);}
+.d4 .gbtn.stop:hover{background:rgba(255,95,95,.24);color:#fff;}
+.d4 .gbtn.busy{color:var(--d4-warn);background:rgba(255,180,60,.12);border:.5px solid rgba(255,180,60,.3);cursor:default;}
+.d4 .gbtn.busy .spin{display:inline-block;width:13px;height:13px;border-radius:50%;
+  border:2px solid rgba(255,180,60,.3);border-top-color:var(--d4-warn);animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+/* Reserved placeholder when a service truly has no action (keeps gutter width constant) */
+.d4 .gbtn.ghost{background:transparent;border:.5px dashed rgba(255,255,255,.08);color:rgba(255,255,255,.14);cursor:default;}
+
+/* model picker — indented under the vllm card, never enters the gutter */
+.d4 .picker{margin:-2px 0 8px 24px;display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#aeb6c8;
+  background:rgba(255,255,255,.05);border:.5px solid rgba(255,255,255,.1);padding:6px 11px;border-radius:9px;cursor:pointer;}
+.d4 .picker .mono{font-family:'JetBrains Mono',monospace;font-size:11.5px;}
+
+.d4 .ports{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--d4-ink-dim);padding:9px 12px;border-radius:11px;
+  background:var(--d4-card2);cursor:pointer;margin-top:2px;}
+.d4 .ports .chev{transition:.18s;display:inline-block;}
+.d4 .ports.open .chev{transform:rotate(90deg);}
+.d4 .ports .c{margin-left:auto;font-size:11px;font-weight:700;background:rgba(255,255,255,.1);color:var(--d4-ink);
+  padding:2px 8px;border-radius:999px;}
+.d4 .ports-body{display:none;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--d4-ink-mute);
+  padding:8px 12px 2px;line-height:1.7;}
+.d4 .ports-body.open{display:block;}
+.d4 .ports-body b{color:#9fb0d8;}
+.d4 .foot{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;border-top:.5px solid var(--d4-hair);}
+.d4 .foot .b{font:inherit;font-size:12.5px;font-weight:600;color:#cdd3e2;border:.5px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);padding:7px 13px;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.d4 .foot .b:hover{background:rgba(255,255,255,.1);}
+.d4 .foot .poll{margin-left:auto;font-size:12px;color:var(--d4-ink-dim);display:flex;align-items:center;gap:7px;}
+.d4 .foot .poll .v{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--d4-ink);background:rgba(255,255,255,.07);
+  padding:5px 9px;border-radius:7px;}
+
+/* ============================ LOG VIEWER (in-log) ============================ */
+.logview{font-family:'Inter',sans-serif;background:linear-gradient(180deg,var(--d4-bg1),var(--d4-bg2));
+  color:var(--d4-ink);border:.5px solid var(--d4-hair);width:480px;}
+.logview .lv-titlebar{display:flex;align-items:center;gap:6px;padding:9px 13px;
+  background:rgba(255,255,255,.03);border-bottom:.5px solid var(--d4-hair);}
+.logview .traffic{display:flex;gap:7px;margin-right:4px;}
+.logview .traffic i{width:11px;height:11px;border-radius:50%;display:inline-block;}
+.logview .traffic .r{background:#ff5f57;}.logview .traffic .y{background:#febc2e;}.logview .traffic .g{background:#28c840;}
+.logview .lv-title{font-size:12px;font-weight:600;color:var(--d4-ink-dim);margin:0 auto;}
+.logview .lv-back{font:inherit;font-size:12px;font-weight:600;color:#aeb6c8;background:rgba(255,255,255,.05);
+  border:.5px solid rgba(255,255,255,.1);border-radius:8px;padding:5px 11px;cursor:pointer;display:flex;align-items:center;gap:5px;}
+.logview .lv-back:hover{background:rgba(122,162,255,.16);color:#fff;border-color:rgba(122,162,255,.45);}
+
+.logview .lv-head{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;}
+.logview .lv-svc{display:flex;align-items:center;gap:9px;}
+.logview .lv-svc .led{width:9px;height:9px;border-radius:50%;background:var(--d4-ok);box-shadow:0 0 8px var(--d4-ok);}
+.logview .lv-svc .nm{font-size:16px;font-weight:700;}
+.logview .lv-svc .meta{font-size:11px;color:var(--d4-ink-mute);font-family:'JetBrains Mono',monospace;margin-top:1px;}
+.logview .lv-actions{margin-left:auto;display:flex;gap:7px;}
+.logview .lv-actions .ic{width:30px;height:30px;border-radius:8px;border:.5px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.05);color:#aeb6c8;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.logview .lv-actions .ic:hover{background:rgba(122,162,255,.16);color:#fff;border-color:rgba(122,162,255,.45);}
+
+.logview .lv-controls{display:flex;align-items:center;gap:8px;padding:0 16px 12px;flex-wrap:wrap;}
+.logview .lv-search{flex:1;min-width:150px;display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.04);
+  border:.5px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 11px;}
+.logview .lv-search input{flex:1;border:0;background:transparent;color:var(--d4-ink);font:inherit;font-size:12.5px;outline:none;}
+.logview .lv-search input::placeholder{color:#5a6276;}
+.logview .lv-chip{font:inherit;font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;cursor:pointer;
+  border:.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--d4-ink-dim);transition:.16s;
+  display:flex;align-items:center;gap:5px;}
+.logview .lv-chip .d{width:7px;height:7px;border-radius:50%;}
+.logview .lv-chip[data-lvl="info"] .d{background:var(--d4-info);}
+.logview .lv-chip[data-lvl="warn"] .d{background:var(--d4-warn);}
+.logview .lv-chip[data-lvl="error"] .d{background:var(--d4-error);}
+.logview .lv-chip.on{color:#fff;background:rgba(122,162,255,.14);border-color:rgba(122,162,255,.4);}
+.logview .lv-chip.off{opacity:.4;}
+.logview .lv-toggle{font:inherit;font-size:11px;font-weight:600;color:var(--d4-ink-dim);display:flex;align-items:center;gap:6px;cursor:pointer;
+  margin-left:auto;}
+.logview .lv-toggle .sw{width:30px;height:17px;border-radius:999px;background:rgba(255,255,255,.12);position:relative;transition:.16s;}
+.logview .lv-toggle .sw i{position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:.16s;}
+.logview .lv-toggle.on .sw{background:rgba(122,162,255,.7);}
+.logview .lv-toggle.on .sw i{left:15px;}
+
+.logview .lv-stream{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.65;
+  background:#080a10;border-top:.5px solid var(--d4-hair);border-bottom:.5px solid var(--d4-hair);
+  padding:10px 14px;height:300px;overflow-y:auto;}
+.logview .lv-stream::-webkit-scrollbar{width:8px;}
+.logview .lv-stream::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px;}
+.logview .ln{display:flex;gap:9px;padding:1px 0;white-space:pre-wrap;word-break:break-word;}
+.logview .ln .t{color:#4b5570;flex:none;}
+.logview .ln .lvl{flex:none;font-weight:700;width:42px;}
+.logview .ln .msg{color:#b7c0d4;}
+.logview .ln.info .lvl{color:var(--d4-info);}
+.logview .ln.warn{background:rgba(255,180,60,.05);}
+.logview .ln.warn .lvl{color:var(--d4-warn);}
+.logview .ln.warn .msg{color:#e6cfa0;}
+.logview .ln.error{background:rgba(255,90,90,.07);}
+.logview .ln.error .lvl{color:var(--d4-error);}
+.logview .ln.error .msg{color:#ffb4b4;}
+.logview .ln .hl{color:#7fe0ff;}
+.logview .ln .num{color:#9af5c4;}
+.logview .ln.hidden{display:none;}
+.logview .lv-foot{display:flex;align-items:center;gap:8px;padding:10px 16px;font-size:11px;color:var(--d4-ink-mute);}
+.logview .lv-foot .live{display:flex;align-items:center;gap:6px;color:var(--d4-ok);font-weight:600;}
+.logview .lv-foot .live .dot{width:7px;height:7px;border-radius:50%;background:var(--d4-ok);box-shadow:0 0 8px var(--d4-ok);
+  animation:pulse 1.4s ease-in-out infinite;}
+.logview .lv-foot .cnt{margin-left:auto;font-family:'JetBrains Mono',monospace;}
+
+/* ============================ LAYOUT RULE DIAGRAM ============================ */
+.diagram{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:30px;}
+@media(max-width:980px){.diagram{grid-template-columns:1fr;}}
+.diag-panel{border:1px solid var(--hair);border-radius:18px;padding:26px 24px;
+  background:radial-gradient(500px 300px at 50% 0%,#171a26,#0c0e15);}
+.diag-panel h4{margin:0 0 4px;font-size:14px;font-weight:700;color:#fff;}
+.diag-panel .sub{font-size:12.5px;color:var(--ink-dim);margin:0 0 20px;}
+
+.anatomy{display:flex;align-items:stretch;gap:8px;position:relative;}
+.anatomy .a-card{flex:1;min-width:0;display:flex;align-items:center;gap:11px;padding:12px;border-radius:12px;
+  background:rgba(122,162,255,.06);border:1.5px dashed rgba(122,162,255,.55);position:relative;}
+.anatomy .a-card .led{width:9px;height:9px;border-radius:50%;background:var(--d4-ok);box-shadow:0 0 8px var(--d4-ok);flex:none;}
+.anatomy .a-card .nm{font-size:13px;font-weight:600;color:#fff;}
+.anatomy .a-card .sp{flex:1;}
+.anatomy .a-spot{width:28px;height:28px;border-radius:8px;flex:none;border:1.5px solid rgba(255,159,214,.7);
+  background:rgba(255,159,214,.12);color:#ffaedb;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.anatomy .a-gutter{width:44px;flex:none;border:1.5px dashed rgba(61,220,132,.6);border-radius:12px;
+  display:flex;align-items:center;justify-content:center;background:rgba(61,220,132,.05);}
+.anatomy .a-gutter .gbtn{width:34px;height:34px;border-radius:9px;background:linear-gradient(180deg,#7aa2ff,#5c84eb);
+  color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.anatomy .a-gutter.stop .gbtn{background:rgba(255,95,95,.16);border:.5px solid rgba(255,95,95,.4);color:#ffb0b0;}
+
+.tag{position:absolute;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  padding:3px 8px;border-radius:6px;white-space:nowrap;}
+.tag.card{top:-30px;left:0;color:#9fb4ff;background:rgba(122,162,255,.14);border:1px solid rgba(122,162,255,.4);}
+.tag.spot{bottom:-32px;color:#ffaedb;background:rgba(255,159,214,.14);border:1px solid rgba(255,159,214,.45);}
+.tag.gut{top:-30px;right:0;color:#7df0ac;background:rgba(61,220,132,.14);border:1px solid rgba(61,220,132,.45);}
+
+.anatomy-wrap{position:relative;padding:34px 0 38px;}
+.anatomy + .anatomy{margin-top:30px;}
+
+.legend-row{display:flex;flex-direction:column;gap:11px;margin-top:8px;}
+.legend-row .lr{display:flex;gap:11px;font-size:13px;color:var(--ink-dim);align-items:flex-start;}
+.legend-row .lr .sw{width:22px;height:14px;border-radius:4px;flex:none;margin-top:2px;}
+.legend-row .lr b{color:#fff;font-weight:600;}
+.legend-row .lr .sw.card{border:1.5px dashed rgba(122,162,255,.7);background:rgba(122,162,255,.08);}
+.legend-row .lr .sw.spot{border:1.5px solid rgba(255,159,214,.7);background:rgba(255,159,214,.14);}
+.legend-row .lr .sw.gut{border:1.5px dashed rgba(61,220,132,.7);background:rgba(61,220,132,.08);}
+
+.bad-good{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px;}
+.bg-card{border-radius:12px;padding:14px;}
+.bg-card.bad{border:1px solid rgba(255,95,95,.3);background:rgba(255,95,95,.05);}
+.bg-card.good{border:1px solid rgba(61,220,132,.3);background:rgba(61,220,132,.05);}
+.bg-card h5{margin:0 0 12px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px;}
+.bg-card.bad h5{color:#ff8a8a;}
+.bg-card.good h5{color:#7df0ac;}
+.mini-row{display:flex;align-items:center;gap:7px;padding:8px 9px;border-radius:8px;background:rgba(255,255,255,.04);
+  border:.5px solid rgba(255,255,255,.07);margin-bottom:7px;font-size:11px;position:relative;}
+.mini-row .led{width:7px;height:7px;border-radius:50%;flex:none;}
+.mini-row .led.g{background:var(--d4-ok);}.mini-row .led.r{background:var(--d4-stop);}
+.mini-row .nm{font-weight:600;color:#dfe3ee;}
+.mini-row .sp{flex:1;}
+.mini-row .spot{width:18px;height:18px;border-radius:5px;background:rgba(255,159,214,.16);border:.5px solid rgba(255,159,214,.4);
+  display:flex;align-items:center;justify-content:center;font-size:10px;color:#ffaedb;flex:none;}
+.mini-row .run{font-size:9px;font-weight:700;color:#fff;background:#5c84eb;padding:3px 7px;border-radius:5px;}
+/* good variant: gutter outside */
+.mini-wrap{display:flex;gap:6px;align-items:stretch;margin-bottom:7px;}
+.mini-wrap .mini-row{margin-bottom:0;flex:1;}
+.mini-wrap .mini-gut{width:26px;flex:none;display:flex;align-items:center;justify-content:center;
+  border:.5px dashed rgba(61,220,132,.35);border-radius:7px;}
+.mini-wrap .mini-gut .g{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;}
+.mini-wrap .mini-gut .g.start{background:#5c84eb;color:#fff;}
+.mini-wrap .mini-gut .g.stop{background:rgba(255,95,95,.16);border:.5px solid rgba(255,95,95,.4);color:#ffb0b0;}
+.align-guide{position:absolute;top:-10px;bottom:-10px;width:1px;background:repeating-linear-gradient(180deg,rgba(255,159,214,.6) 0 4px,transparent 4px 8px);}
+
+/* ============================ SHARED ============================ */
+.spec-table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px;}
+.spec-table th,.spec-table td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top;}
+.spec-table th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6b7488;font-weight:700;}
+.spec-table td{color:var(--ink-dim);}
+.spec-table td b{color:var(--ink);font-weight:600;}
+.spec-table code{font-family:'JetBrains Mono',monospace;font-size:12px;color:#aeb8ff;background:rgba(140,160,255,.1);padding:1px 6px;border-radius:5px;}
+
+.caption{text-align:center;font-size:12px;color:#56607a;margin-top:14px;}
+.caption code{font-family:'JetBrains Mono',monospace;color:#8ea0ff;}
+
+.foot-note{margin-top:100px;padding-top:30px;border-top:1px solid var(--hair);font-size:13px;color:#5b6478;text-align:center;}
+.foot-note code{font-family:'JetBrains Mono',monospace;color:#8ea0ff;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============================ PAGE HEADER ============================ -->
+  <header class="page-head">
+    <div class="eyebrow"><span class="dot"></span> Telemetrify · Final Spec · Design 04</div>
+    <h1 class="title">AI-Pulse — Data-Viz Forward</h1>
+    <p class="lede">The chosen direction, refined to ship. A 480px macOS menubar popover that reframes the four L40S GPUs as glanceable <strong>radial gauges</strong> with memory <strong>sparklines</strong> and a <strong>KPI pressure strip</strong>, plus a re-architected services list and a native <strong>log viewer</strong>. This page is the developer-facing deliverable: pixel-faithful mockups, the load-bearing layout rule, and SwiftUI handoff notes per section.</p>
+
+    <div class="callout">
+      <h4>&#9888; The bug this redesign fixes</h4>
+      <p>Today each service row is a single card with the spotlight (view-logs) icon <strong>inside</strong> it. When a service is stopped, a <strong>Start</strong> button also appears inside the card and shoves the spotlight icon left — so the magnifier lands at a different x on every row and the list jitters whenever a service changes state. The fix is structural: the spotlight stays pinned inside the card, and the Start/Stop/Kill control moves to a <strong>fixed-width gutter column outside the card</strong>. Cards become identical width in every state; only the gutter glyph changes.</p>
+    </div>
+
+    <nav class="toc">
+      <a href="#popover"><span>01</span>Refined Popover</a>
+      <a href="#rule"><span>02</span>Card + Gutter Rule</a>
+      <a href="#logs"><span>03</span>Log Viewer</a>
+      <a href="#handoff"><span>04</span>Tokens &amp; Handoff</a>
+    </nav>
+  </header>
+
+  <!-- ============================ 01 · POPOVER ============================ -->
+  <section class="design" id="popover">
+    <div class="design-head">
+      <span class="num">01</span>
+      <h2>The refined popover</h2>
+      <span class="tagline">gauges · sparklines · KPI strip · new service rows</span>
+    </div>
+    <p class="rationale">The complete surface at the real 480px width. Try the <code>RoccoPulse / Local-Pulse</code> toggle, hover the spotlight and gutter buttons, and expand <code>Unknown ports</code>. The three service rows below demonstrate the layout rule in three states — <b>running</b>, <b>stopped</b>, and <b>transitioning</b> — all sharing identical card geometry.</p>
+
+    <div class="design-body">
+      <div class="stage">
+        <div class="pop d4" id="popoverMock">
+          <div class="pad">
+            <div class="hdr"><div class="app"><span class="ring"></span> AI-Pulse</div><div class="ts">updated just now</div></div>
+            <div class="seg"><button class="on">RoccoPulse</button><button>Local-Pulse</button></div>
+
+            <div class="kpis">
+              <div class="kpi"><div class="k">Avg Util</div><div class="v warn">98%</div></div>
+              <div class="kpi"><div class="k">GPUs Free</div><div class="v warn">0/4</div></div>
+              <div class="kpi"><div class="k">Peak Temp</div><div class="v">70&deg;</div></div>
+            </div>
+
+            <div class="tier">&#9888; <span><b>Tier 0</b> · No GPUs free — falling back to Anthropic API</span></div>
+
+            <div class="ggrid">
+              <div class="gcard">
+                <div class="gauge"><svg width="58" height="58" viewBox="0 0 58 58"><circle cx="29" cy="29" r="24" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="6"/><circle cx="29" cy="29" r="24" fill="none" stroke="#ff5fb4" stroke-width="6" stroke-linecap="round" stroke-dasharray="150.8" stroke-dashoffset="3"/></svg><div class="ctr"><span class="pct">98<small style="font-size:9px">%</small></span><span class="u">UTIL</span></div></div>
+                <div class="meta"><div class="id">GPU 0</div><div class="mod">NVIDIA L40S</div><div class="spark"><i style="height:60%"></i><i style="height:72%"></i><i style="height:85%"></i><i style="height:90%"></i><i style="height:88%"></i><i style="height:90%"></i></div><div class="temp">90% mem · <b>69&deg;</b></div></div>
+              </div>
+              <div class="gcard">
+                <div class="gauge"><svg width="58" height="58" viewBox="0 0 58 58"><circle cx="29" cy="29" r="24" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="6"/><circle cx="29" cy="29" r="24" fill="none" stroke="#ff5fb4" stroke-width="6" stroke-linecap="round" stroke-dasharray="150.8" stroke-dashoffset="3"/></svg><div class="ctr"><span class="pct">98<small style="font-size:9px">%</small></span><span class="u">UTIL</span></div></div>
+                <div class="meta"><div class="id">GPU 1</div><div class="mod">NVIDIA L40S</div><div class="spark"><i style="height:70%"></i><i style="height:80%"></i><i style="height:78%"></i><i style="height:90%"></i><i style="height:92%"></i><i style="height:90%"></i></div><div class="temp">90% mem · <b>70&deg;</b></div></div>
+              </div>
+              <div class="gcard">
+                <div class="gauge"><svg width="58" height="58" viewBox="0 0 58 58"><circle cx="29" cy="29" r="24" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="6"/><circle cx="29" cy="29" r="24" fill="none" stroke="#ff5fb4" stroke-width="6" stroke-linecap="round" stroke-dasharray="150.8" stroke-dashoffset="3"/></svg><div class="ctr"><span class="pct">98<small style="font-size:9px">%</small></span><span class="u">UTIL</span></div></div>
+                <div class="meta"><div class="id">GPU 2</div><div class="mod">NVIDIA L40S</div><div class="spark"><i style="height:65%"></i><i style="height:75%"></i><i style="height:82%"></i><i style="height:80%"></i><i style="height:88%"></i><i style="height:86%"></i></div><div class="temp">88% mem · <b>64&deg;</b></div></div>
+              </div>
+              <div class="gcard">
+                <div class="gauge"><svg width="58" height="58" viewBox="0 0 58 58"><circle cx="29" cy="29" r="24" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="6"/><circle cx="29" cy="29" r="24" fill="none" stroke="#ff5fb4" stroke-width="6" stroke-linecap="round" stroke-dasharray="150.8" stroke-dashoffset="3"/></svg><div class="ctr"><span class="pct">98<small style="font-size:9px">%</small></span><span class="u">UTIL</span></div></div>
+                <div class="meta"><div class="id">GPU 3</div><div class="mod">NVIDIA L40S</div><div class="spark"><i style="height:55%"></i><i style="height:68%"></i><i style="height:80%"></i><i style="height:85%"></i><i style="height:84%"></i><i style="height:88%"></i></div><div class="temp">88% mem · <b>57&deg;</b></div></div>
+              </div>
+            </div>
+
+            <div class="sec">Services <span class="hint">spotlight = in-card · action = gutter</span></div>
+
+            <!-- RUNNING: rocco-agent — gutter shows stop/kill -->
+            <div class="svc-row">
+              <div class="svc-card">
+                <span class="led g"></span>
+                <div class="body"><div class="nm">rocco-agent</div><div class="st run">· active · pid 4821</div></div>
+                <button class="spotlight" title="View logs" data-svc="rocco-agent">&#9906;</button>
+              </div>
+              <div class="gutter"><button class="gbtn stop" title="Stop / kill">&#9632;</button></div>
+            </div>
+
+            <!-- STOPPED: vllm — gutter shows play/start -->
+            <div class="svc-row">
+              <div class="svc-card">
+                <span class="led r"></span>
+                <div class="body"><div class="nm">vllm</div><div class="st warn">· will load Kimi-Dev-72B</div></div>
+                <button class="spotlight" title="View logs" data-svc="vllm">&#9906;</button>
+              </div>
+              <div class="gutter"><button class="gbtn start" title="Start">&#9654;</button></div>
+            </div>
+            <div class="picker">&#8645; <span class="mono">WhiteRabbitNeo-70B · FP8</span> &#9662;</div>
+
+            <!-- TRANSITIONING: tabbyapi — gutter shows spinner, action disabled -->
+            <div class="svc-row">
+              <div class="svc-card">
+                <span class="led w"></span>
+                <div class="body"><div class="nm">tabbyapi</div><div class="st warn">· starting… loading weights</div></div>
+                <button class="spotlight" title="View logs" data-svc="tabbyapi">&#9906;</button>
+              </div>
+              <div class="gutter"><button class="gbtn busy" title="Starting…"><span class="spin"></span></button></div>
+            </div>
+
+            <div class="ports" id="portsToggle">&#9656;<span class="chev" style="margin-left:-4px"></span> Unknown ports <span class="c">71</span></div>
+            <div class="ports-body" id="portsBody">
+              <div><b>:8000</b> python · <b>:8265</b> ray · <b>:11434</b> ollama · <b>:7860</b> gradio</div>
+              <div><b>:6006</b> tensorboard · <b>:9090</b> prometheus · <span>+ 65 more…</span></div>
+            </div>
+
+            <div class="foot"><button class="b">&#8635; Refresh</button><div class="poll">Poll <span class="v">15s</span></div><button class="b">Quit</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <h3>Implementation notes</h3>
+        <ul>
+          <li>Ring gauges = native <b><code>Gauge(value:in:){}.gaugeStyle(.accessoryCircularCapacity)</code></b>, or <code>Circle().trim(from:0,to:util)</code> for full color control + the rotate(-90&deg;) start.</li>
+          <li>Sparklines = tiny <code>Chart { ForEach(samples){ BarMark } }</code> (Swift Charts) fed a rolling buffer of recent polls; hide axes with <code>.chartXAxis(.hidden)</code>.</li>
+          <li>KPI strip is <b>derived state</b>: <code>avg util</code>, <code>free count</code>, <code>peak temp</code> computed from the GPU array — never stored.</li>
+          <li>2×2 grid = <code>LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible())])</code>; gauges <code>.fixedSize()</code> so cards stay 480-bound.</li>
+          <li><b>Service row = <code>HStack(spacing:8){ Card; Gutter }</code></b> with <code>Gutter.frame(width:44)</code>. See §02 for the full rule.</li>
+          <li>Model picker is a SwiftUI <code>Menu</code> indented under the vllm card — it lives in the card column, never the gutter.</li>
+          <li>NSPopover: set <code>contentSize</code> to a fixed 480 width; height <code>.sizeThatFits</code>. Behavior <code>.transient</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 02 · LAYOUT RULE ============================ -->
+  <section class="design" id="rule">
+    <div class="design-head">
+      <span class="num">02</span>
+      <h2>The card + gutter rule</h2>
+      <span class="tagline">non-negotiable · apply to every service row</span>
+    </div>
+    <p class="rationale">Every service row is an <code>HStack</code> of exactly two children: a flexible <b>card</b> and a fixed-width <b>action gutter</b>. The spotlight/log icon is permanently the trailing element <em>inside</em> the card; the Start/Stop/Kill control lives <em>outside</em> the card in the 44pt gutter. Because the gutter width is always reserved, every card renders at an identical width and the spotlight icon never moves — regardless of service state.</p>
+
+    <div class="diagram">
+      <!-- Anatomy panel -->
+      <div class="diag-panel">
+        <h4>Anatomy</h4>
+        <p class="sub">Two siblings in an HStack. The dashed boxes are layout regions, not visible chrome.</p>
+
+        <div class="anatomy-wrap">
+          <div class="anatomy">
+            <span class="tag card">Card · flex, identical width</span>
+            <div class="a-card">
+              <span class="led"></span>
+              <span class="nm">rocco-agent</span>
+              <span class="sp"></span>
+              <span class="a-spot">&#9906;<span class="tag spot" style="left:50%;transform:translateX(-50%)">Spotlight · pinned in-card</span></span>
+            </div>
+            <span class="tag gut">Gutter · fixed 44pt</span>
+            <div class="a-gutter"><span class="gbtn">&#9632;</span></div>
+          </div>
+        </div>
+
+        <div class="anatomy-wrap" style="padding-top:8px">
+          <div class="anatomy">
+            <div class="a-card">
+              <span class="led" style="background:var(--d4-stop);box-shadow:0 0 8px var(--d4-stop)"></span>
+              <span class="nm">vllm</span>
+              <span class="sp"></span>
+              <span class="a-spot">&#9906;</span>
+            </div>
+            <div class="a-gutter stop"><span class="gbtn">&#9654;</span></div>
+          </div>
+        </div>
+
+        <div class="legend-row">
+          <div class="lr"><span class="sw card"></span><span><b>Card (flexible)</b> — LED, name, status, then the spotlight. Width is <b>identical in every state</b> because the action never enters it.</span></div>
+          <div class="lr"><span class="sw spot"></span><span><b>Spotlight (in-card, trailing)</b> — opens the log viewer. Anchored with <code>Spacer()</code> before it so it always hugs the card's right edge.</span></div>
+          <div class="lr"><span class="sw gut"></span><span><b>Gutter (fixed 44pt)</b> — holds exactly one glyph: <code>play.fill</code> (stopped), <code>stop.fill</code> (running), spinner (transitioning), or a reserved ghost so width is constant.</span></div>
+        </div>
+      </div>
+
+      <!-- Before/After panel -->
+      <div class="diag-panel">
+        <h4>Why it stops jittering</h4>
+        <p class="sub">The dashed magenta line marks where the spotlight icon's right edge lands.</p>
+
+        <div class="bad-good">
+          <div class="bg-card bad">
+            <h5>&#10007; Today (broken)</h5>
+            <div style="position:relative">
+              <div class="align-guide" style="right:30px"></div>
+              <div class="mini-row"><span class="led g"></span><span class="nm">rocco-agent</span><span class="sp"></span><span class="spot">&#9906;</span></div>
+              <div class="align-guide" style="right:64px"></div>
+              <div class="mini-row"><span class="led r"></span><span class="nm">vllm</span><span class="sp"></span><span class="spot">&#9906;</span><span class="run">Start</span></div>
+            </div>
+            <p style="font-size:11px;color:#e3a0a0;margin:10px 0 0;line-height:1.5">Start button lives <b>inside</b> the card and pushes the spotlight to a different x. The two magnifiers misalign and the row reflows on state change.</p>
+          </div>
+
+          <div class="bg-card good">
+            <h5>&#10003; New (fixed)</h5>
+            <div style="position:relative">
+              <div class="align-guide" style="right:35px"></div>
+              <div class="mini-wrap">
+                <div class="mini-row"><span class="led g"></span><span class="nm">rocco-agent</span><span class="sp"></span><span class="spot">&#9906;</span></div>
+                <div class="mini-gut"><span class="g stop">&#9632;</span></div>
+              </div>
+              <div class="mini-wrap">
+                <div class="mini-row"><span class="led r"></span><span class="nm">vllm</span><span class="sp"></span><span class="spot">&#9906;</span></div>
+                <div class="mini-gut"><span class="g start">&#9654;</span></div>
+              </div>
+            </div>
+            <p style="font-size:11px;color:#a0e3bc;margin:10px 0 0;line-height:1.5">Spotlight is pinned in-card at a single x on <b>both</b> rows. The action sits in its own gutter; only the glyph changes.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes" style="position:static;margin-top:30px;max-width:860px">
+      <h3>SwiftUI shape of the rule</h3>
+      <ul>
+        <li>Row: <code>HStack(spacing:8){ ServiceCard(svc); ActionGutter(svc).frame(width:44) }</code> — the <b>only</b> place service state branches.</li>
+        <li>Card body ends with <code>Spacer(minLength:8)</code> then the spotlight <code>Button</code>, so the magnifier always trails at the card's right edge.</li>
+        <li>Gutter is a single <code>switch svc.state</code>: <code>.running → stop.fill</code>, <code>.stopped → play.fill</code>, <code>.transitioning → ProgressView()</code>, <code>else → Color.clear</code> ghost. The <code>.frame(width:44)</code> guarantees constant gutter width even for the ghost.</li>
+        <li>Never put the action <code>Button</code> inside <code>ServiceCard</code>. Card layout must be <b>independent of state</b> — verify by toggling state in a Preview and confirming the card's frame is identical.</li>
+        <li>Kill (force) is the long-press / right-click affordance on the running <code>stop.fill</code> gutter button, surfaced via <code>.contextMenu</code> with <code>xmark.octagon</code>.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================ 03 · LOG VIEWER ============================ -->
+  <section class="design" id="logs">
+    <div class="design-head">
+      <span class="num">03</span>
+      <h2>The log viewer (in-log)</h2>
+      <span class="tagline">macOS-native · opens from the spotlight icon</span>
+    </div>
+    <p class="rationale">Clicking any spotlight icon opens this view — a detached <code>NSPanel</code> styled to match the popover. It carries the service identity in the header, a live monospace stream with syntax-tinted log levels, search, level-filter chips, an auto-scroll toggle, and copy/export. Toggle the level chips below to filter the stream; flip auto-scroll to watch it pin to the newest line.</p>
+
+    <div class="design-body">
+      <div class="stage">
+        <div class="pop logview" id="logMock">
+          <div class="lv-titlebar">
+            <span class="traffic"><i class="r"></i><i class="y"></i><i class="g"></i></span>
+            <button class="lv-back" id="logBack">&#8249; Pulse</button>
+            <span class="lv-title">Service Logs</span>
+          </div>
+
+          <div class="lv-head">
+            <div class="lv-svc">
+              <span class="led"></span>
+              <div><div class="nm">vllm</div><div class="meta">running · pid 5120 · :8000 · since 14:02:11</div></div>
+            </div>
+            <div class="lv-actions">
+              <button class="ic" title="Copy visible">&#10697;</button>
+              <button class="ic" title="Export .log">&#8681;</button>
+            </div>
+          </div>
+
+          <div class="lv-controls">
+            <div class="lv-search">&#9906; <input type="text" id="logSearch" placeholder="Filter lines (CUDA, GET, model…)"></div>
+            <button class="lv-chip on" data-lvl="info"><span class="d"></span>info</button>
+            <button class="lv-chip on" data-lvl="warn"><span class="d"></span>warn</button>
+            <button class="lv-chip on" data-lvl="error"><span class="d"></span>error</button>
+            <button class="lv-toggle on" id="autoScroll"><span class="sw"><i></i></span>Auto-scroll</button>
+          </div>
+
+          <div class="lv-stream" id="logStream">
+            <div class="ln info"><span class="t">14:02:11.402</span><span class="lvl">INFO</span><span class="msg">Starting vLLM API server <span class="hl">v0.6.3</span> on http://0.0.0.0:<span class="num">8000</span></span></div>
+            <div class="ln info"><span class="t">14:02:11.610</span><span class="lvl">INFO</span><span class="msg">Loading model <span class="hl">WhiteRabbitNeo-70B</span> · quant=<span class="hl">FP8</span> · tp_size=<span class="num">4</span></span></div>
+            <div class="ln info"><span class="t">14:02:13.288</span><span class="lvl">INFO</span><span class="msg">Detected <span class="num">4</span>× NVIDIA L40S · 48GB · driver 550.90.07</span></div>
+            <div class="ln info"><span class="t">14:02:16.041</span><span class="lvl">INFO</span><span class="msg">CUDA graph capture: allocated <span class="num">9.4</span>GiB on cuda:0</span></div>
+            <div class="ln warn"><span class="t">14:02:18.770</span><span class="lvl">WARN</span><span class="msg">KV cache will use <span class="num">88%</span> of free VRAM — consider --gpu-memory-utilization 0.85</span></div>
+            <div class="ln info"><span class="t">14:02:24.515</span><span class="lvl">INFO</span><span class="msg">Weights loaded in <span class="num">12.9</span>s · shards 8/8 · resident <span class="num">71.2</span>GiB</span></div>
+            <div class="ln info"><span class="t">14:02:24.880</span><span class="lvl">INFO</span><span class="msg">Application startup complete · routes mounted · model ready</span></div>
+            <div class="ln info"><span class="t">14:03:01.122</span><span class="lvl">INFO</span><span class="msg"><span class="hl">POST</span> /v1/chat/completions <span class="num">200</span> · 41 tok/s · 312ms</span></div>
+            <div class="ln warn"><span class="t">14:03:09.640</span><span class="lvl">WARN</span><span class="msg">Request queue depth <span class="num">6</span> · scheduler throttling new prefills</span></div>
+            <div class="ln error"><span class="t">14:03:12.004</span><span class="lvl">ERROR</span><span class="msg">CUDA OOM on cuda:1 · failed to allocate <span class="num">2.1</span>GiB · aborting batch <span class="num">#4471</span></span></div>
+            <div class="ln info"><span class="t">14:03:12.331</span><span class="lvl">INFO</span><span class="msg">Recovered · evicted <span class="num">3</span> sequences · KV cache freed <span class="num">3.8</span>GiB</span></div>
+            <div class="ln info"><span class="t">14:03:18.907</span><span class="lvl">INFO</span><span class="msg"><span class="hl">POST</span> /v1/chat/completions <span class="num">200</span> · 38 tok/s · 287ms</span></div>
+            <div class="ln info"><span class="t">14:03:25.550</span><span class="lvl">INFO</span><span class="msg"><span class="hl">GET</span> /health <span class="num">200</span> · 0.4ms · rocco-agent probe</span></div>
+            <div class="ln warn"><span class="t">14:03:31.218</span><span class="lvl">WARN</span><span class="msg">GPU 1 temp <span class="num">70</span>°C approaching slowdown threshold (<span class="num">75</span>°C)</span></div>
+            <div class="ln info"><span class="t">14:03:40.760</span><span class="lvl">INFO</span><span class="msg"><span class="hl">POST</span> /v1/chat/completions <span class="num">200</span> · 40 tok/s · 301ms · stream</span></div>
+          </div>
+
+          <div class="lv-foot">
+            <span class="live"><span class="dot"></span>Live</span>
+            <span>tailing · 15 lines</span>
+            <span class="cnt" id="logCount">15 shown</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <h3>Implementation notes</h3>
+        <ul>
+          <li>Detach as an <code>NSPanel</code> (<code>.nonactivatingPanel</code>, <code>.titled</code>, <code>.fullSizeContentView</code>) so the traffic-light close maps to a real window control; or push as a second <code>NavigationStack</code> route inside the popover for a lighter build.</li>
+          <li>Stream = <code>ScrollViewReader { ScrollView { LazyVStack(lines) } }</code>; on new line call <code>proxy.scrollTo(last, anchor:.bottom)</code> only while <b>auto-scroll</b> is on. Disable it when the user scrolls up (track via <code>.onScrollPhaseChange</code> / a drag gesture).</li>
+          <li>Lines are a <code>struct LogLine { ts; level; text }</code>. Level drives <code>.foregroundStyle</code>: <code>.info → blue</code>, <code>.warn → orange</code>, <code>.error → red</code> with a tinted row background.</li>
+          <li>Level chips = <code>Set&lt;LogLevel&gt;</code> filter; search is a <code>.searchable</code>-style <code>TextField</code> doing case-insensitive <code>contains</code>. Both filter the same derived <code>visibleLines</code>.</li>
+          <li>Copy = <code>NSPasteboard</code> of the visible (filtered) lines; Export writes the full buffer to <code>~/Library/Logs/AI-Pulse/&lt;service&gt;.log</code> via a save panel.</li>
+          <li>Mono font: <code>.system(.caption, design:.monospaced)</code>; tint inline tokens (paths, status codes, sizes) with <code>AttributedString</code> for the <span style="color:#7fe0ff">cyan</span>/<span style="color:#9af5c4">green</span> highlights.</li>
+          <li>Use a bounded ring buffer (e.g. last 2,000 lines) so a chatty vllm doesn't grow memory unbounded.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="caption">Live stream mocks realistic <code>vllm</code> startup + serving lines (model load, CUDA alloc, OOM recovery, HTTP) and a <code>rocco-agent</code> health probe.</p>
+  </section>
+
+  <!-- ============================ 04 · TOKENS & HANDOFF ============================ -->
+  <section class="design" id="handoff">
+    <div class="design-head">
+      <span class="num">04</span>
+      <h2>Tokens &amp; handoff</h2>
+      <span class="tagline">copy-paste values · SF Symbols · sizing</span>
+    </div>
+    <p class="rationale">The shared design tokens and the exact symbol / sizing mapping the implementer needs. Spacing follows a 4pt grid; the gutter is the one hard-coded layout constant.</p>
+
+    <div class="diagram" style="grid-template-columns:1fr 1fr">
+      <div class="diag-panel">
+        <h4>Color &amp; type tokens</h4>
+        <table class="spec-table">
+          <tr><th>Token</th><th>Value</th><th>Use</th></tr>
+          <tr><td><b>bg</b></td><td><code>#10131C → #0A0C12</code></td><td>popover gradient</td></tr>
+          <tr><td><b>util</b></td><td><code>#FF5FB4</code></td><td>gauge ring</td></tr>
+          <tr><td><b>mem</b></td><td><code>#56D2FF</code></td><td>sparkline / memory</td></tr>
+          <tr><td><b>ok</b></td><td><code>#3DDC84</code></td><td>running LED</td></tr>
+          <tr><td><b>stop</b></td><td><code>#FF5F5F</code></td><td>stopped LED</td></tr>
+          <tr><td><b>warn</b></td><td><code>#FFB454</code></td><td>tier / transitioning</td></tr>
+          <tr><td><b>accent</b></td><td><code>#7AA2FF</code></td><td>brand / start btn</td></tr>
+          <tr><td><b>error</b></td><td><code>#FF6B6B</code></td><td>log ERROR lines</td></tr>
+          <tr><td><b>type</b></td><td><code>Inter</code> + <code>JetBrains Mono</code></td><td>UI / metrics &amp; logs</td></tr>
+        </table>
+      </div>
+
+      <div class="diag-panel">
+        <h4>SF Symbols &amp; sizing</h4>
+        <table class="spec-table">
+          <tr><th>Element</th><th>Symbol / size</th></tr>
+          <tr><td><b>Spotlight (in-card)</b></td><td><code>text.magnifyingglass</code> · 28pt slot</td></tr>
+          <tr><td><b>Start (gutter)</b></td><td><code>play.fill</code> · 36pt btn</td></tr>
+          <tr><td><b>Stop (gutter)</b></td><td><code>stop.fill</code> · 36pt btn</td></tr>
+          <tr><td><b>Kill (context)</b></td><td><code>xmark.octagon</code></td></tr>
+          <tr><td><b>Transitioning</b></td><td><code>ProgressView()</code> in gutter</td></tr>
+          <tr><td><b>Gutter width</b></td><td><code>.frame(width: 44)</code> — fixed</td></tr>
+          <tr><td><b>Row spacing</b></td><td><code>HStack(spacing: 8)</code></td></tr>
+          <tr><td><b>Popover width</b></td><td><code>contentSize.width = 480</code></td></tr>
+          <tr><td><b>Refresh / Quit</b></td><td><code>arrow.clockwise</code> / footer</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot-note">Design 04 · Data-Viz Forward · final spec · 480px popover + detached log panel · the load-bearing constant is the <code>44pt</code> action gutter · telemetrify / menubar / 2026-06-05</p>
+
+</div>
+
+<script>
+// ---- popover: segmented toggle ----
+document.querySelectorAll('#popoverMock .seg button').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+  });
+});
+
+// ---- popover: unknown ports collapsible ----
+const pt=document.getElementById('portsToggle'), pb=document.getElementById('portsBody');
+pt.addEventListener('click',()=>{pt.classList.toggle('open');pb.classList.toggle('open');});
+
+// ---- popover spotlight -> jump to log viewer ----
+document.querySelectorAll('#popoverMock .spotlight').forEach(s=>{
+  s.addEventListener('click',()=>{
+    document.getElementById('logs').scrollIntoView({behavior:'smooth',block:'center'});
+  });
+});
+document.getElementById('logBack').addEventListener('click',()=>{
+  document.getElementById('popover').scrollIntoView({behavior:'smooth',block:'center'});
+});
+
+// ---- log viewer: level chips + search filter ----
+const stream=document.getElementById('logStream');
+const lines=[...stream.querySelectorAll('.ln')];
+const chips=[...document.querySelectorAll('#logMock .lv-chip')];
+const search=document.getElementById('logSearch');
+const countEl=document.getElementById('logCount');
+function activeLevels(){return chips.filter(c=>c.classList.contains('on')).map(c=>c.dataset.lvl);}
+function applyFilter(){
+  const lvls=activeLevels();
+  const q=search.value.trim().toLowerCase();
+  let shown=0;
+  lines.forEach(ln=>{
+    const lvl=ln.classList.contains('error')?'error':ln.classList.contains('warn')?'warn':'info';
+    const txt=ln.textContent.toLowerCase();
+    const ok=lvls.includes(lvl)&&(q===''||txt.includes(q));
+    ln.classList.toggle('hidden',!ok);
+    if(ok)shown++;
+  });
+  countEl.textContent=shown+' shown';
+}
+chips.forEach(c=>c.addEventListener('click',()=>{c.classList.toggle('on');c.classList.toggle('off');applyFilter();}));
+search.addEventListener('input',applyFilter);
+
+// ---- log viewer: auto-scroll toggle ----
+const auto=document.getElementById('autoScroll');
+auto.addEventListener('click',()=>{
+  auto.classList.toggle('on');
+  if(auto.classList.contains('on')) stream.scrollTop=stream.scrollHeight;
+});
+// start pinned to bottom
+stream.scrollTop=stream.scrollHeight;
+</script>
+</body>
+</html>

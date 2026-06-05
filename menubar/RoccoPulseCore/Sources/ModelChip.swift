@@ -21,4 +21,23 @@ public enum ModelChip {
         guard let precision, !precision.isEmpty else { return compressed }
         return "\(compressed) · \(precision.uppercased())"
     }
+
+    /// Compress model names that appear inside free text (e.g. the tier
+    /// reason "Llama-3.1-WhiteRabbitNeo-2-70B BF16 (4 GPUs) — tool-capable").
+    /// A token is treated as a model name when it's hyphenated AND one of
+    /// its segments is camel-case (≥3 capitals) — plain prose like
+    /// "tool-capable" or "Anthropic API" passes through untouched.
+    public static func compressModelNames(in text: String) -> String {
+        text.split(separator: " ", omittingEmptySubsequences: false)
+            .map { token -> String in
+                let t = String(token)
+                guard t.contains("-"),
+                      t.split(separator: "-").contains(where: {
+                          $0.filter(\.isUppercase).count >= 3
+                      })
+                else { return t }
+                return label(model: t)
+            }
+            .joined(separator: " ")
+    }
 }

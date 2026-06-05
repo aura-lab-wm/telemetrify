@@ -184,7 +184,9 @@ struct StatusView: View {
             Text("Tier \(snapshot.tier)")
                 .font(.body.bold())
             Text("·").foregroundStyle(.tertiary)
-            Text(snapshot.tierReason)
+            // Model names compress via ModelChip ("WRN-2-70B", not the
+            // full HF id) so the reason fits without tail-truncating.
+            Text(ModelChip.compressModelNames(in: snapshot.tierReason))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

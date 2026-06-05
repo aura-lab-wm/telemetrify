@@ -31,6 +31,18 @@ final class ModelChipTests: XCTestCase {
                        "Kimi-Dev-72B · FP8")
     }
 
+    func testCompressModelNamesInFreeText() {
+        XCTAssertEqual(
+            ModelChip.compressModelNames(
+                in: "Llama-3.1-WhiteRabbitNeo-2-70B BF16 (4 GPUs) — tool-capable"),
+            "WRN-2-70B BF16 (4 GPUs) — tool-capable")
+    }
+
+    func testCompressLeavesPlainProseAlone() {
+        let reason = "No GPUs free — falling back to Anthropic API"
+        XCTAssertEqual(ModelChip.compressModelNames(in: reason), reason)
+    }
+
     func testCommonPrefixesAreStripped() {
         XCTAssertEqual(ModelChip.label(model: "Meta-Llama-3.1-70B"),
                        "70B")

@@ -291,7 +291,6 @@ private struct ServiceRowView: View {
         static let gutter: CGFloat = 44      // outside-card action column
         static let rowHeight: CGFloat = 32
         static let columnGap: CGFloat = 8
-        static let detailIndent: CGFloat = dot + columnGap + icon + columnGap  // aligns secondary detail under the name column
         static let gutterButton: CGFloat = 32   // inner control size inside the 44pt gutter
     }
 
@@ -328,15 +327,13 @@ private struct ServiceRowView: View {
     }
 
     /// Everything that belongs to the service itself — status, identity,
-    /// summary, model picker, log strip — wrapped in one tinted container.
-    /// Its geometry must be identical in every lifecycle state; anything
-    /// state-dependent in SIZE lives in the gutter outside.
+    /// summary, model chip, log strip — wrapped in one tinted container.
+    /// Its geometry must be identical in every lifecycle state AND across
+    /// services: the model picker is a fixed-height chip ON the primary
+    /// line (design Option B), never a second row.
     private var card: some View {
         VStack(alignment: .leading, spacing: 4) {
             primaryRow
-            if hasSecondaryDetail {
-                secondaryDetailRow
-            }
             if !logLines.isEmpty {
                 ServiceLogStrip(lines: logLines, isLive: inFlight)
             }
@@ -358,6 +355,8 @@ private struct ServiceRowView: View {
                 .frame(width: Metrics.name, alignment: .leading)
             summaryText
                 .frame(maxWidth: .infinity, alignment: .leading)
+            trainingHintView
+            modelChipView
             spotlightButton   // pinned trailing IN-CARD, same x every row
         }
         .frame(minHeight: Metrics.rowHeight)
@@ -440,22 +439,6 @@ private struct ServiceRowView: View {
         }
     }
 
-    private var secondaryDetailRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Color.clear
-                .frame(width: Metrics.detailIndent, height: 1)
-            modelPickerView
-            trainingHintView
-            Spacer(minLength: 0)
-        }
-    }
-
-    private var hasSecondaryDetail: Bool {
-        if !inFlight, let mp = modelPicker, !mp.available.isEmpty { return true }
-        if !inFlight, trainingHint != nil { return true }
-        return false
-    }
-
     private var statusDot: some View {
         Circle()
             .fill(inFlight ? Color.accentColor : stateColor)
@@ -508,76 +491,71 @@ private struct ServiceRowView: View {
         }
     }
 
-    @ViewBuilder
-    private var modelPickerView: some View {
-        if !inFlight, let mp = modelPicker, !mp.available.isEmpty {
-            modelMenu(mp)
-        }
-    }
-
+    /// "Capped by training" now reads as a compact orange glyph on the
+    /// primary line (tooltip carries the explanation) so it can never
+    /// add a second row.
     @ViewBuilder
     private var trainingHintView: some View {
-        if !inFlight, let hint = trainingHint {
-            Text("· \(hint)")
-                .font(.caption2)
+        if !inFlight, trainingHint != nil {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10))
                 .foregroundStyle(.orange)
-                .lineLimit(1)
                 .help("AURA Pulse reports a training job is using GPUs, so Auto picked a smaller model.")
+                .accessibilityLabel("Model capped by training")
         }
     }
 
-    /// Dropdown that lets the operator pin which model vLLM serves (or Auto).
-    /// Picking one writes the override on Rocco and recycles vLLM, so the
-    /// row goes in-flight for ~75s while the new weights load.
+    /// Option B chip (design-explorations/vllm-model-picker-options.html):
+    /// a fixed-height capsule on the PRIMARY line that owns the model
+    /// identity and opens the picker. Single line + capped width means
+    /// it can never change the card's shape. Picking a model writes the
+    /// override on Rocco and recycles vLLM (~75s in-flight).
     @ViewBuilder
-    private func modelMenu(_ mp: ModelPicker) -> some View {
-        Menu {
-            Button { mp.onSelect(nil) } label: {
-                Text((mp.selected == nil ? "✓ " : "   ") + "Auto (by free GPUs)")
-            }
-            Divider()
-            ForEach(mp.available) { m in
-                Button { mp.onSelect(m.profile) } label: {
-                    Text((mp.selected == m.profile ? "✓ " : "   ")
-                         + m.label
-                         + (m.downloaded ? "" : "  (not downloaded)"))
+    private var modelChipView: some View {
+        if !inFlight, let mp = modelPicker, !mp.available.isEmpty {
+            Menu {
+                Button { mp.onSelect(nil) } label: {
+                    Text((mp.selected == nil ? "✓ " : "   ") + "Auto (by free GPUs)")
                 }
-                .disabled(!m.downloaded)
+                Divider()
+                ForEach(mp.available) { m in
+                    Button { mp.onSelect(m.profile) } label: {
+                        Text((mp.selected == m.profile ? "✓ " : "   ")
+                             + m.label
+                             + (m.downloaded ? "" : "  (not downloaded)"))
+                    }
+                    .disabled(!m.downloaded)
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(currentModelShortLabel(mp))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 7, weight: .bold))
+                }
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Color.accentColor)
             }
-        } label: {
-            HStack(spacing: 3) {
-                Text(currentModelShortLabel(mp))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8))
-            }
-            .font(.system(size: 12, weight: .semibold))
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+            .frame(maxWidth: 150)
+            .fixedSize(horizontal: false, vertical: true)
+            .help("Choose which model vLLM serves on Rocco")
+            .accessibilityLabel("Model: \(currentModelShortLabel(mp))")
         }
-        .menuStyle(.borderlessButton)
-        .controlSize(.small)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .help("Choose which model vLLM serves on Rocco")
     }
 
-    /// Short label for the menu's resting state: "Auto", or the precision +
-    /// model of the pinned config (e.g. "Qwen3-Coder-30B · BF16").
+    /// Chip resting label: "Auto", or the pinned model via the Core-tested
+    /// ModelChip abbreviation (e.g. "WRN-70B · BF16").
     private func currentModelShortLabel(_ mp: ModelPicker) -> String {
         guard let sel = mp.selected,
               let m = mp.available.first(where: { $0.profile == sel })
         else { return "Auto" }
-        return "\(shortModelName(m.model)) · \(m.precision.uppercased())"
-    }
-
-    private func shortModelName(_ model: String) -> String {
-        let leaf = model.split(separator: "/").last.map(String.init) ?? model
-        let simplified = leaf
-            .replacingOccurrences(of: "Llama-3.1-", with: "")
-            .replacingOccurrences(of: "Meta-", with: "")
-            .replacingOccurrences(of: "Qwen3-Coder-", with: "Qwen3-")
-            .replacingOccurrences(of: "-2-70B", with: "-70B")
-        if simplified.count <= 24 { return simplified }
-        return String(simplified.suffix(24))
+        return ModelChip.label(model: m.model, precision: m.precision)
     }
 
     private var stateColor: Color {

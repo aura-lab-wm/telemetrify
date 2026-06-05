@@ -142,16 +142,21 @@ public final class ServiceProber: @unchecked Sendable {
         // Tiny dotted-path resolver. Supports just the few keys we need.
         switch path {
         case "vllm.running":
+            // Summaries use the ModelChip abbreviation ("WRN-2-70B", not
+            // "Llama-3.1-WhiteRabbitNeo-2-70B") so the single-line card
+            // never mid-truncates — the picker chip next to it owns the
+            // full selection detail.
             if snap.vllm.running {
+                let serving = ModelChip.label(model: snap.vllm.model ?? label)
                 return ServiceStatus(state: .up,
-                                     summary: snap.vllm.model ?? label)
+                                     summary: "serving \(serving)")
             }
             // OFFLINE: name the model that WOULD load — pulled from the
             // model_manager's configured_model. Falls back to the
             // built-in `label` (which the registry sets to a sensible
             // default like "Kimi-Dev-72B") only when the agent's older
             // snapshot didn't surface configured_model.
-            let next = snap.vllm.configuredModel ?? label
+            let next = ModelChip.label(model: snap.vllm.configuredModel ?? label)
             return ServiceStatus(state: .down,
                                  summary: "will load \(next)")
         default:

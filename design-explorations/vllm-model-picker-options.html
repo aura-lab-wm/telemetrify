@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Pulse · vLLM Model Picker — Single-Line Card Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* Surface palette tuned to the screenshot */
+    --app-bg:        #1c1f26;   /* popover background behind cards */
+    --card-bg:       #262a33;   /* tinted service card */
+    --card-bg-hover: #2c313b;
+    --card-stroke:   rgba(255,255,255,0.06);
+    --chip-bg:       #30353f;
+    --chip-bg-hover: #383e4a;
+    --chip-stroke:   rgba(255,255,255,0.10);
+    --btn-bg:        #333944;
+    --btn-bg-hover:  #3c424f;
+
+    --led-green:     #34d058;
+    --led-green-glow:rgba(52,208,88,0.45);
+
+    --text-strong:   #f2f4f8;   /* bold name */
+    --text-body:     #c2c8d4;   /* summary */
+    --text-dim:      #828a99;   /* secondary / chevrons */
+    --text-faint:    #5f6878;
+
+    --accent:        #6ea8ff;   /* interactive model name */
+    --accent-soft:   rgba(110,168,255,0.14);
+    --warn:          #f0a23a;   /* capped-by-training orange */
+    --warn-soft:     rgba(240,162,58,0.14);
+
+    --rec:           #34d058;
+    --rec-soft:      rgba(52,208,88,0.12);
+
+    --radius-card:   12px;
+    --radius-chip:   7px;
+    --gutter:        44px;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, #232733 0%, transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, #20242e 0%, transparent 55%),
+      #14161b;
+    color:var(--text-body);
+    font-family:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    padding:48px 24px 96px;
+    font-feature-settings:'cv11','ss01';
+  }
+
+  .page-head{ max-width:1180px; margin:0 auto 40px; }
+  .page-head h1{
+    font-size:26px; font-weight:700; letter-spacing:-0.02em;
+    color:var(--text-strong); margin:0 0 8px;
+  }
+  .page-head p{
+    font-size:14.5px; line-height:1.55; color:var(--text-dim);
+    margin:0; max-width:760px;
+  }
+  .page-head .tag{
+    display:inline-block; font-size:11px; font-weight:600; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--accent); background:var(--accent-soft);
+    padding:4px 10px; border-radius:20px; margin-bottom:16px;
+  }
+
+  /* layout grid of option cards */
+  .grid{
+    max-width:1180px; margin:0 auto;
+    display:grid; grid-template-columns:repeat(2, 1fr); gap:28px;
+  }
+  @media (max-width:1080px){ .grid{ grid-template-columns:1fr; } }
+
+  .option{
+    background:linear-gradient(180deg,#1a1d24 0%, #181b21 100%);
+    border:1px solid rgba(255,255,255,0.05);
+    border-radius:18px; padding:24px 24px 26px;
+    position:relative; overflow:hidden;
+  }
+  .option.recommended{
+    border-color:rgba(52,208,88,0.45);
+    box-shadow:0 0 0 1px rgba(52,208,88,0.18), 0 18px 50px -20px rgba(52,208,88,0.25);
+  }
+  .opt-head{ display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+  .opt-num{
+    width:26px; height:26px; flex:none; border-radius:8px;
+    display:grid; place-items:center; font-size:13px; font-weight:700;
+    color:var(--text-dim); background:#23272f; border:1px solid var(--card-stroke);
+  }
+  .opt-title{ font-size:16.5px; font-weight:700; color:var(--text-strong); letter-spacing:-0.01em; }
+  .rec-badge{
+    margin-left:auto; display:inline-flex; align-items:center; gap:6px;
+    font-size:10.5px; font-weight:700; letter-spacing:0.07em; text-transform:uppercase;
+    color:var(--rec); background:var(--rec-soft); border:1px solid rgba(52,208,88,0.4);
+    padding:4px 9px; border-radius:20px;
+  }
+  .rec-badge .dot{ width:6px; height:6px; border-radius:50%; background:var(--rec); box-shadow:0 0 8px var(--led-green-glow); }
+  .opt-sub{ font-size:12.5px; color:var(--text-faint); margin:0 0 18px 38px; font-weight:500; }
+
+  /* ---- The popover mock (the real artifact) ---- */
+  .popover{
+    width:460px; max-width:100%;
+    background:var(--app-bg);
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:16px;
+    padding:12px 12px;
+    box-shadow:0 24px 60px -24px rgba(0,0,0,0.7);
+  }
+  /* a service-row = card + 44pt gutter */
+  .row{ display:flex; align-items:stretch; gap:6px; margin:0 0 8px; }
+  .row:last-child{ margin-bottom:0; }
+
+  .card{
+    flex:1 1 auto; min-width:0;
+    background:var(--card-bg);
+    border:1px solid var(--card-stroke);
+    border-radius:var(--radius-card);
+    height:54px;                 /* FIXED — identical for every row/state */
+    display:flex; align-items:center;
+    padding:0 8px 0 12px; gap:11px;
+    transition:background .14s ease;
+  }
+  .card:hover{ background:var(--card-bg-hover); }
+
+  /* status LED */
+  .led{ width:9px; height:9px; flex:none; border-radius:50%; background:var(--led-green);
+        box-shadow:0 0 0 2px rgba(52,208,88,0.18), 0 0 9px var(--led-green-glow); }
+  .led.idle{ background:#6b7280; box-shadow:none; }
+
+  /* service icon (chip glyph) */
+  .svc-ico{ width:18px; height:18px; flex:none; color:var(--text-dim); display:grid; place-items:center; }
+  .svc-ico svg{ width:18px; height:18px; display:block; }
+
+  /* bold name — fixed 108px column */
+  .name{ width:108px; flex:none; font-size:15px; font-weight:700; color:var(--text-strong);
+         letter-spacing:-0.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* summary — flexible, truncates */
+  .summary{ flex:1 1 auto; min-width:0; font-size:13.5px; color:var(--text-body);
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .summary.center-trunc{ direction:rtl; text-align:left; }  /* mimic middle-ish truncation visually */
+  .summary .muted{ color:var(--text-dim); }
+
+  /* trailing spotlight (log-inspect) button — pinned to card trailing edge */
+  .spotlight{
+    width:34px; height:34px; flex:none; margin-left:8px;
+    border-radius:9px; background:var(--btn-bg); border:1px solid var(--chip-stroke);
+    display:grid; place-items:center; color:var(--text-dim);
+    transition:background .14s ease;
+  }
+  .spotlight:hover{ background:var(--btn-bg-hover); color:var(--text-body); }
+  .spotlight svg{ width:16px; height:16px; }
+
+  /* the 44pt gutter OUTSIDE the card — lifecycle action */
+  .gutter{
+    width:var(--gutter); flex:none; display:grid; place-items:center;
+    color:var(--text-dim);
+  }
+  .gutter button{
+    width:34px; height:34px; border:none; background:transparent; border-radius:9px;
+    color:inherit; display:grid; place-items:center; cursor:pointer; transition:background .14s ease;
+  }
+  .gutter button:hover{ background:rgba(255,255,255,0.07); color:var(--text-body); }
+  .gutter svg{ width:18px; height:18px; }
+
+  /* ===== shared inline picker chip ===== */
+  .chip{
+    display:inline-flex; align-items:center; gap:6px;
+    height:24px; padding:0 8px 0 9px; border-radius:var(--radius-chip);
+    background:var(--chip-bg); border:1px solid var(--chip-stroke);
+    color:var(--text-body); font-size:12.5px; font-weight:600; cursor:pointer;
+    white-space:nowrap; transition:background .14s ease, border-color .14s ease;
+    max-width:100%; min-width:0;
+  }
+  .chip:hover{ background:var(--chip-bg-hover); border-color:rgba(255,255,255,0.18); }
+  .chip .chip-name{ overflow:hidden; text-overflow:ellipsis; }
+  .chip .chev{ flex:none; color:var(--text-dim); }
+  .chip svg{ width:11px; height:11px; display:block; }
+
+  /* model-name-as-text (option A) */
+  .model-link{
+    color:var(--accent); font-weight:600; cursor:pointer;
+    border-bottom:1px dashed rgba(110,168,255,0.4); padding-bottom:1px;
+  }
+  .model-link:hover{ border-bottom-color:var(--accent); }
+  .model-link .chev{ color:var(--text-dim); }
+
+  /* warning glyph for "capped by training" */
+  .cap{
+    display:inline-flex; align-items:center; gap:4px; flex:none;
+    color:var(--warn); font-size:11px; font-weight:600;
+  }
+  .cap.icon-only{ width:18px; height:18px; justify-content:center; gap:0; }
+  .cap svg{ width:13px; height:13px; }
+  .cap-pill{
+    display:inline-flex; align-items:center; gap:4px;
+    background:var(--warn-soft); color:var(--warn);
+    font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:20px;
+  }
+  .cap-pill svg{ width:11px; height:11px; }
+
+  /* ===== Option C: disclosure sub-row OUTSIDE cards ===== */
+  .disclosure{
+    margin:2px 0 8px;
+    background:rgba(255,255,255,0.025);
+    border:1px solid rgba(255,255,255,0.05);
+    border-radius:10px;
+    /* aligns under cards, but NOT a card itself — full popover width minus gutter feel */
+  }
+  .disc-head{
+    display:flex; align-items:center; gap:8px; padding:9px 12px;
+    font-size:12.5px; color:var(--text-dim); cursor:pointer;
+  }
+  .disc-head .twist{ transition:transform .18s ease; color:var(--text-faint); }
+  .disclosure.open .disc-head .twist{ transform:rotate(90deg); }
+  .disc-head .label{ color:var(--text-body); font-weight:600; }
+  .disc-head .current{ margin-left:auto; color:var(--accent); font-weight:600; font-size:12px; }
+  .disc-body{ display:none; padding:2px 8px 8px; }
+  .disclosure.open .disc-body{ display:block; }
+  .disc-opt{
+    display:flex; align-items:center; gap:9px; padding:7px 10px; border-radius:8px;
+    font-size:12.5px; color:var(--text-body); cursor:pointer;
+  }
+  .disc-opt:hover{ background:rgba(255,255,255,0.05); }
+  .disc-opt.sel{ color:var(--text-strong); font-weight:600; }
+  .disc-opt.sel::before{ content:'✓'; color:var(--led-green); font-size:12px; width:14px; }
+  .disc-opt:not(.sel)::before{ content:''; width:14px; }
+  .disc-opt.dis{ color:var(--text-faint); cursor:not-allowed; }
+  .disc-opt .meta{ margin-left:auto; font-size:11px; color:var(--text-faint); }
+
+  /* ===== open menu mock (popup) ===== */
+  .menu{
+    position:absolute; z-index:30; min-width:236px;
+    background:#2b2f39; border:1px solid rgba(255,255,255,0.12);
+    border-radius:11px; padding:6px; box-shadow:0 22px 50px -16px rgba(0,0,0,0.75);
+  }
+  .menu .mhead{ font-size:10.5px; font-weight:700; letter-spacing:0.07em; text-transform:uppercase;
+                color:var(--text-faint); padding:6px 10px 4px; }
+  .menu-opt{
+    display:flex; align-items:center; gap:9px; padding:7px 10px; border-radius:7px;
+    font-size:12.5px; color:var(--text-body); cursor:pointer;
+  }
+  .menu-opt:hover{ background:rgba(255,255,255,0.07); }
+  .menu-opt.sel{ color:var(--text-strong); font-weight:600; }
+  .menu-opt.sel::before{ content:'✓'; color:var(--led-green); width:13px; font-size:12px; }
+  .menu-opt:not(.sel):not(.dis)::before{ content:''; width:13px; }
+  .menu-opt.dis{ color:var(--text-faint); cursor:not-allowed; }
+  .menu-opt.dis::before{ content:''; width:13px; }
+  .menu-opt .tag{ margin-left:auto; font-size:10px; color:var(--text-faint);
+                  border:1px solid rgba(255,255,255,0.1); border-radius:5px; padding:1px 5px; }
+  .menu-opt .tag.cap{ color:var(--warn); border-color:rgba(240,162,58,0.4); }
+  .menu-sep{ height:1px; background:rgba(255,255,255,0.07); margin:5px 8px; }
+
+  .stage{ position:relative; }   /* anchor for menus */
+
+  /* annotation block under each mock */
+  .notes{ margin-top:20px; }
+  .notes .reads{
+    font-size:12px; color:var(--text-dim); background:rgba(255,255,255,0.03);
+    border-left:2px solid rgba(255,255,255,0.12); padding:9px 12px; border-radius:0 8px 8px 0;
+    margin-bottom:14px; line-height:1.5;
+  }
+  .notes .reads code{ color:var(--text-body); font-family:'Inter',monospace; font-weight:600; }
+  .proscons{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .pc{ font-size:12px; line-height:1.5; }
+  .pc h4{ margin:0 0 5px; font-size:11px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; }
+  .pc.pro h4{ color:var(--led-green); }
+  .pc.con h4{ color:#f06a6a; }
+  .pc ul{ margin:0; padding-left:16px; color:var(--text-dim); }
+  .pc li{ margin-bottom:3px; }
+  .feas{
+    margin-top:14px; font-size:11.5px; line-height:1.55; color:var(--text-faint);
+    background:rgba(110,168,255,0.05); border:1px solid rgba(110,168,255,0.12);
+    border-radius:8px; padding:9px 12px;
+  }
+  .feas b{ color:var(--accent); font-weight:600; }
+
+  .mock-label{ font-size:10.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
+               color:var(--text-faint); margin:0 0 10px 2px; }
+
+  /* recommendation block */
+  .final{
+    max-width:1180px; margin:40px auto 0;
+    background:linear-gradient(180deg, rgba(52,208,88,0.07), rgba(52,208,88,0.02));
+    border:1px solid rgba(52,208,88,0.3); border-radius:18px; padding:26px 28px;
+  }
+  .final h2{ margin:0 0 12px; font-size:18px; color:var(--text-strong); display:flex; align-items:center; gap:10px; }
+  .final h2 .rec-badge{ margin-left:0; }
+  .final p{ margin:0; font-size:14px; line-height:1.65; color:var(--text-body); max-width:880px; }
+  .final p b{ color:var(--text-strong); }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div class="tag">AI-Pulse · macOS menubar popover</div>
+  <h1>vLLM Model Picker — keeping every card single-line &amp; identical in shape</h1>
+  <p>The vllm row is the only service that needs a model-selection control. Today it adds a second line inside the card,
+     breaking the hard rule that cards are pixel-identical in width and height. Below are four ways to keep the model
+     picker (and current-model info) accessible while every card stays a single fixed-height row. The summary text that
+     currently duplicates the model name is removed in every option.</p>
+</div>
+
+<div class="grid">
+
+  <!-- ============================ OPTION A ============================ -->
+  <section class="option">
+    <div class="opt-head">
+      <span class="opt-num">A</span>
+      <span class="opt-title">Summary-as-Picker</span>
+    </div>
+    <p class="opt-sub">The summary slot itself becomes the model menu. Zero extra chrome.</p>
+
+    <div class="mock-label">vllm row + rocco-agent (alignment check)</div>
+    <div class="popover stage">
+
+      <!-- vllm -->
+      <div class="row">
+        <div class="card">
+          <span class="led"></span>
+          <span class="svc-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>
+          </span>
+          <span class="name">vllm</span>
+          <span class="summary">
+            Serving
+            <span class="model-link" onclick="this.closest('.stage').querySelector('.menu').style.display='block'">WhiteRabbitNeo-70B&nbsp;·&nbsp;BF16
+              <svg class="chev" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 1l4 4 4-4"/></svg>
+            </span>
+          </span>
+          <span class="cap icon-only" title="Context capped by training length">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          </span>
+          <span class="spotlight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+        </div>
+        <div class="gutter"><button title="Stop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button></div>
+      </div>
+
+      <!-- open menu mock -->
+      <div class="menu" style="left:138px; top:48px; display:none;">
+        <div class="mhead">Serve model</div>
+        <div class="menu-opt">Auto (by free GPUs)</div>
+        <div class="menu-sep"></div>
+        <div class="menu-opt sel">WhiteRabbitNeo-70B · BF16 <span class="tag cap">cap</span></div>
+        <div class="menu-opt">WhiteRabbitNeo-70B · FP8</div>
+        <div class="menu-opt">Kimi-Dev-72B</div>
+        <div class="menu-opt">Qwen3-Coder-30B</div>
+        <div class="menu-opt dis">Llama-3.1-405B <span class="tag">not downloaded</span></div>
+      </div>
+
+      <!-- rocco-agent -->
+      <div class="row">
+        <div class="card">
+          <span class="led"></span>
+          <span class="svc-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.4" fill="currentColor" stroke="none"/><path d="M12 4v4M12 4h-.01"/></svg>
+          </span>
+          <span class="name">rocco-agent</span>
+          <span class="summary muted">Idle · last run 14m ago</span>
+          <span class="spotlight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+        </div>
+        <div class="gutter"><button title="Start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 5v14l11-7z"/></svg></button></div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="reads">Reads: <code>● vllm   Serving <span style="color:var(--accent)">WhiteRabbitNeo-70B · BF16 ⌄</span></code> + ⚠ glyph + spotlight. Picker opens from the underlined model name.</div>
+      <div class="proscons">
+        <div class="pc pro"><h4>Pros</h4><ul><li>Zero new chrome; uses the slot that was duplicating the info.</li><li>The thing you read is the thing you click — perfect discoverability.</li></ul></div>
+        <div class="pc con"><h4>Cons</h4><ul><li>Tap target is text-width, slightly fiddly with very long names.</li><li>Picker affordance is subtler than a button.</li></ul></div>
+      </div>
+      <div class="feas"><b>SwiftUI:</b> wrap the model substring in a <b>Menu</b> styled as plain text + chevron; rest of summary is a sibling <b>Text</b> in the same HStack. No layout change to the row.</div>
+    </div>
+  </section>
+
+  <!-- ============================ OPTION B ============================ -->
+  <section class="option recommended">
+    <div class="opt-head">
+      <span class="opt-num">B</span>
+      <span class="opt-title">Compact In-Card Chip</span>
+      <span class="rec-badge"><span class="dot"></span>Recommended</span>
+    </div>
+    <p class="opt-sub">A fixed-height capsule chip in the trailing summary area opens the menu.</p>
+
+    <div class="mock-label">vllm row + rocco-agent (alignment check)</div>
+    <div class="popover stage">
+
+      <!-- vllm -->
+      <div class="row">
+        <div class="card">
+          <span class="led"></span>
+          <span class="svc-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>
+          </span>
+          <span class="name">vllm</span>
+          <span class="summary muted">2 GPUs · 18k ctx</span>
+          <span class="cap icon-only" title="Context capped by training length">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          </span>
+          <span class="chip" onclick="this.closest('.stage').querySelector('.menu').style.display='block'">
+            <span class="chip-name">WRN-70B·BF16</span>
+            <svg class="chev" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 1l4 4 4-4"/></svg>
+          </span>
+          <span class="spotlight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+        </div>
+        <div class="gutter"><button title="Stop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button></div>
+      </div>
+
+      <!-- open menu mock -->
+      <div class="menu" style="right:54px; top:48px; display:none;">
+        <div class="mhead">Serve model</div>
+        <div class="menu-opt">Auto (by free GPUs)</div>
+        <div class="menu-sep"></div>
+        <div class="menu-opt sel">WhiteRabbitNeo-70B · BF16 <span class="tag cap">cap</span></div>
+        <div class="menu-opt">WhiteRabbitNeo-70B · FP8</div>
+        <div class="menu-opt">Kimi-Dev-72B</div>
+        <div class="menu-opt">Qwen3-Coder-30B</div>
+        <div class="menu-opt dis">Llama-3.1-405B <span class="tag">not downloaded</span></div>
+      </div>
+
+      <!-- rocco-agent -->
+      <div class="row">
+        <div class="card">
+          <span class="led"></span>
+          <span class="svc-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.4" fill="currentColor" stroke="none"/><path d="M12 4v4"/></svg>
+          </span>
+          <span class="name">rocco-agent</span>
+          <span class="summary muted">Idle · last run 14m ago</span>
+          <span class="spotlight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+        </div>
+        <div class="gutter"><button title="Start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 5v14l11-7z"/></svg></button></div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="reads">Reads: <code>● vllm   2 GPUs · 18k ctx</code> ⚠ <code style="background:var(--chip-bg);padding:2px 6px;border-radius:5px;">WRN-70B·BF16 ⌄</code> spotlight. Chip is the picker; summary now shows live runtime info instead of duplicating the name.</div>
+      <div class="proscons">
+        <div class="pc pro"><h4>Pros</h4><ul><li>Picker is an obvious, consistent button-like affordance with a stable footprint.</li><li>Frees the summary to show useful telemetry (ctx, GPUs).</li></ul></div>
+        <div class="pc con"><h4>Cons</h4><ul><li>Long names need an abbreviation rule (WhiteRabbitNeo→WRN).</li><li>One more element competing in the row's right side.</li></ul></div>
+      </div>
+      <div class="feas"><b>SwiftUI:</b> a <b>Menu</b> with <b>.menuStyle(.button)</b> + <b>.buttonStyle</b> capsule, fixed height 24pt, <b>.layoutPriority</b> below summary so it never grows the row; abbreviate via a lookup. Only vllm renders it.</div>
+    </div>
+  </section>
+
+  <!-- ============================ OPTION C ============================ -->
+  <section class="option">
+    <div class="opt-head">
+      <span class="opt-num">C</span>
+      <span class="opt-title">Disclosure Sub-Row (outside cards)</span>
+    </div>
+    <p class="opt-sub">A popover-wide "Model" disclosure under the vllm card — like the existing "Unknown ports" pattern.</p>
+
+    <div class="mock-label">vllm row + disclosure + rocco-agent</div>
+    <div class="popover stage">
+
+      <!-- vllm -->
+      <div class="row">
+        <div class="card">
+          <span class="led"></span>
+          <span class="svc-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>
+          </span>
+          <span class="name">vllm</span>
+          <span class="summary muted">Serving · 2 GPUs · 18k ctx</span>
+          <span class="spotlight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+        </div>
+        <div class="gutter"><button title="Stop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button></div>
+      </div>
+
+      <!-- disclosure (open) — sits outside the card geometry, aligned with the card column -->
+      <div class="disclosure open" style="margin-left:0; margin-right:50px;">
+        <div class="disc-head" onclick="this.closest('.disclosure').classList.toggle('open')">
+          <svg class="twist" viewBox="0 0 10 12" width="9" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 1l5 5-5 5"/></svg>
+          <span class="label">Model</span>
+          <span class="cap-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>capped by training</span>
+          <span class="current">WhiteRabbitNeo-70B · BF16</span>
+        </div>
+        <div class="disc-body">
+          <div class="disc-opt">Auto (by free GPUs)</div>
+          <div class="disc-opt sel">WhiteRabbitNeo-70B · BF16 <span class="meta">cap 18k</span></div>
+          <div class="disc-opt">WhiteRabbitNeo-70B · FP8</div>
+          <div class="disc-opt">Kimi-Dev-72B</div>
+          <div class="disc-opt">Qwen3-Coder-30B</div>
+          <div class="disc-opt dis">Llama-3.1-405B <span class="meta">not downloaded</span></div>
+        </div>
+      </div>
+
+      <!-- rocco-agent -->
+      <div class="row">
+        <div class="card">
+          <span class="led"></span>
+          <span class="svc-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.4" fill="currentColor" stroke="none"/><path d="M12 4v4"/></svg>
+          </span>
+          <span class="name">rocco-agent</span>
+          <span class="summary muted">Idle · last run 14m ago</span>
+          <span class="spotlight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+        </div>
+        <div class="gutter"><button title="Start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 5v14l11-7z"/></svg></button></div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="reads">Reads: card is identical to every other service. A separate disclosure below carries <code>Model ▸ WhiteRabbitNeo-70B · BF16</code> + the orange "capped by training" pill inline, expanding to the full option list.</div>
+      <div class="proscons">
+        <div class="pc pro"><h4>Pros</h4><ul><li>Card geometry is provably untouched — strongest guarantee of the rule.</li><li>Reuses the existing "Unknown ports" disclosure pattern; room for rich detail + the cap hint.</li></ul></div>
+        <div class="pc con"><h4>Cons</h4><ul><li>Two clicks to switch (expand → pick); pushes other rows down.</li><li>Model state lives away from the row it belongs to.</li></ul></div>
+      </div>
+      <div class="feas"><b>SwiftUI:</b> a <b>DisclosureGroup</b> below the vllm <b>ServiceRow</b>, conditionally inserted; current model in the header label. Trivially matches the existing ports disclosure code.</div>
+    </div>
+  </section>
+
+  <!-- ============================ OPTION D ============================ -->
+  <section class="option">
+    <div class="opt-head">
+      <span class="opt-num">D</span>
+      <span class="opt-title">Secondary Surface (ellipsis / gutter menu)</span>
+    </div>
+    <p class="opt-sub">Selection moves to a context menu; current model lives only in the summary text.</p>
+
+    <div class="mock-label">vllm row + rocco-agent (alignment check)</div>
+    <div class="popover stage">
+
+      <!-- vllm -->
+      <div class="row">
+        <div class="card">
+          <span class="led"></span>
+          <span class="svc-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>
+          </span>
+          <span class="name">vllm</span>
+          <span class="summary muted">WhiteRabbitNeo-70B · BF16 · 18k ctx</span>
+          <span class="spotlight" style="margin-left:6px;"
+                onclick="this.closest('.stage').querySelector('.menu').style.display='block'" title="More">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+          </span>
+          <span class="spotlight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+        </div>
+        <div class="gutter"><button title="Stop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button></div>
+      </div>
+
+      <!-- open context menu mock -->
+      <div class="menu" style="right:50px; top:48px; display:none;">
+        <div class="mhead">vllm · serve model</div>
+        <div class="menu-opt">Auto (by free GPUs)</div>
+        <div class="menu-opt sel">WhiteRabbitNeo-70B · BF16 <span class="tag cap">cap</span></div>
+        <div class="menu-opt">WhiteRabbitNeo-70B · FP8</div>
+        <div class="menu-opt">Kimi-Dev-72B</div>
+        <div class="menu-opt">Qwen3-Coder-30B</div>
+        <div class="menu-opt dis">Llama-3.1-405B <span class="tag">not downloaded</span></div>
+        <div class="menu-sep"></div>
+        <div class="menu-opt">Open logs…</div>
+      </div>
+
+      <!-- rocco-agent -->
+      <div class="row">
+        <div class="card">
+          <span class="led"></span>
+          <span class="svc-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="8" width="16" height="11" rx="3"/><circle cx="9" cy="13" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.4" fill="currentColor" stroke="none"/><path d="M12 4v4"/></svg>
+          </span>
+          <span class="name">rocco-agent</span>
+          <span class="summary muted">Idle · last run 14m ago</span>
+          <span class="spotlight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+        </div>
+        <div class="gutter"><button title="Start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 5v14l11-7z"/></svg></button></div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="reads">Reads: <code>● vllm   WhiteRabbitNeo-70B · BF16 · 18k ctx</code> + ⋯ + spotlight. Picker hides inside the ⋯ context menu; cap shown as a "cap" tag in the menu (or back in the summary).</div>
+      <div class="proscons">
+        <div class="pc pro"><h4>Pros</h4><ul><li>Card stays clean; rich menu can hold more than just model choice.</li><li>No abbreviation needed — full name shown in summary.</li></ul></div>
+        <div class="pc con"><h4>Cons</h4><ul><li>Low discoverability — hidden behind a generic ⋯; back to summary truncation for long names.</li><li>Extra in-card button crowds the trailing edge next to spotlight.</li></ul></div>
+      </div>
+      <div class="feas"><b>SwiftUI:</b> add a <b>Menu</b> with an ellipsis label, or attach <b>.contextMenu</b> to the row. Easy, but a frequent action behind a hidden menu fights the operator's muscle memory.</div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ============================ RECOMMENDATION ============================ -->
+<div class="final">
+  <h2><span class="rec-badge"><span class="dot"></span>Recommended</span> Option B — Compact In-Card Chip</h2>
+  <p>The chip wins on the metrics that matter for a <b>frequent</b> operation: it is a single, obvious, button-shaped target
+     (one click to open, one to pick), it lives <b>on the vllm row</b> where the operator expects it, and its fixed 24pt height
+     guarantees the card never grows — satisfying the "same shape always" rule without pushing other rows around like the
+     disclosure (C) does. It also <b>fixes the duplication</b>: the chip owns the model identity, freeing the summary to show
+     live telemetry (<code style="color:var(--text-body)">2 GPUs · 18k ctx</code>) instead of the ugly mid-truncated name. The
+     "capped by training" hint reads naturally as the small orange warning glyph beside the chip, with the full reason in the
+     menu. Option A is the strong runner-up and shares the same chrome philosophy — if abbreviation rules feel fragile,
+     fall back to A's underlined-text picker, which needs no truncation logic at all.</p>
+</div>
+
+</body>
+</html>

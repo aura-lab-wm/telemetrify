@@ -37,8 +37,9 @@
   "tier": 4,
   "tier_reason": "4 GPUs free",
   "inference_recent": {
-    "requests_last_5m": 17,
-    "avg_latency_ms": 842.3
+    "requests_running": 1,
+    "requests_waiting": 0,
+    "tokens_per_sec": 47.3
   },
   "errors": []
 }

@@ -32,7 +32,9 @@ final class ParserTests: XCTestCase {
         XCTAssertEqual(status.vllm.model, "moonshotai/Kimi-Dev-72B")
         XCTAssertEqual(status.tier, 4)
         XCTAssertNotNil(status.inferenceRecent)
-        XCTAssertEqual(status.inferenceRecent?.requestsLast5m, 17)
+        XCTAssertEqual(status.inferenceRecent?.requestsRunning, 1)
+        XCTAssertEqual(status.inferenceRecent?.tokensPerSec, 47.3)
+        XCTAssertEqual(status.inferenceRecent?.isWorking, true)
     }
 
     func testDecodesVLLMDownFixture() throws {

@@ -749,10 +749,99 @@ def collect_snapshot() -> dict[str, Any]:
         "services": services,
         "tier": tier,
         "tier_reason": tier_reason,
-        "inference_recent": None,  # vLLM /metrics not wired in v1
+        "inference_recent": probe_inference(vllm_block),
         "errors": errors,
     }
     return snapshot
+
+
+# ---------------------------------------------------------------------------
+# Live inference activity — vLLM Prometheus /metrics
+# ---------------------------------------------------------------------------
+
+# Holds the previous generation_tokens_total + wall-clock so each tick can
+# turn the monotonic counter into a tokens/sec rate.
+_INFERENCE_STATE: dict[str, float] = {}
+
+
+def parse_vllm_metrics(text: str) -> dict[str, float]:
+    """Pull the three activity numbers out of vLLM's Prometheus text.
+
+    Returns requests_running / requests_waiting (ints) and the
+    generation_tokens_total counter (float). Missing lines default to 0.
+    """
+    wanted = {
+        "vllm:num_requests_running": "requests_running",
+        "vllm:num_requests_waiting": "requests_waiting",
+        "vllm:generation_tokens_total": "generation_tokens_total",
+    }
+    out = {v: 0.0 for v in wanted.values()}
+    for line in text.splitlines():
+        if line.startswith("#") or " " not in line:
+            continue
+        metric = line.split("{", 1)[0].split(" ", 1)[0].strip()
+        key = wanted.get(metric)
+        if key is None:
+            continue
+        try:
+            out[key] = float(line.rsplit(" ", 1)[1])
+        except (ValueError, IndexError):
+            continue
+    out["requests_running"] = int(out["requests_running"])
+    out["requests_waiting"] = int(out["requests_waiting"])
+    return out
+
+
+def inference_from_metrics(
+    *, running: int, waiting: int, gen_total: float, now: float,
+    prev: dict[str, float],
+) -> dict[str, Any]:
+    """Build the inference_recent block + the next state to remember.
+
+    tokens_per_sec = delta(gen_total) / elapsed, clamped to >= 0 so a
+    counter reset (vLLM restart) never reports a negative rate. The first
+    sample (no prev) reports 0 — we have no baseline to diff against yet.
+    """
+    rate = 0.0
+    if prev and prev.get("ts") is not None:
+        elapsed = now - float(prev["ts"])
+        delta = gen_total - float(prev.get("gen_total", gen_total))
+        if elapsed > 0 and delta > 0:
+            rate = delta / elapsed
+    return {
+        "block": {
+            "requests_running": running,
+            "requests_waiting": waiting,
+            "tokens_per_sec": round(rate, 1),
+        },
+        "state": {"gen_total": gen_total, "ts": now},
+    }
+
+
+def probe_inference(vllm_block: dict[str, Any]) -> dict[str, Any] | None:
+    """Sample vLLM /metrics this tick. None when vLLM isn't running or the
+    endpoint can't be reached (the model can't be 'working' if it's down).
+    """
+    if not vllm_block.get("running"):
+        _INFERENCE_STATE.clear()
+        return None
+    try:
+        req = urllib.request.Request(VLLM_BASE_URL.rstrip("/") + "/metrics")
+        with urllib.request.urlopen(req, timeout=2.0) as resp:
+            text = resp.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    m = parse_vllm_metrics(text)
+    out = inference_from_metrics(
+        running=m["requests_running"],
+        waiting=m["requests_waiting"],
+        gen_total=m["generation_tokens_total"],
+        now=time.time(),
+        prev=dict(_INFERENCE_STATE),
+    )
+    _INFERENCE_STATE.clear()
+    _INFERENCE_STATE.update(out["state"])
+    return out["block"]
 
 
 # ---------------------------------------------------------------------------

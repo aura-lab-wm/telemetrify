@@ -12,11 +12,17 @@ import Foundation
 public enum MenuBarTitle {
     public static func make(snapshot: RoccoStatus?, now: Date) -> String? {
         guard let snap = snapshot, !snap.isStale(now: now) else { return nil }
-        let util = GPUSummary(gpus: snap.gpus).map { "\($0.avgUtilPct)%" }
         if snap.vllm.running {
             let model = ModelChip.label(model: snap.vllm.model ?? "vLLM")
-            return [model, util].compactMap { $0 }.joined(separator: " ")
+            // WORKING: tokens are flowing → show throughput, the live
+            // "model is doing something" signal (▸ <n> tok/s). Idle but
+            // up → fall back to GPU util so the rig still reads honest.
+            if let inf = snap.inferenceRecent, inf.isWorking {
+                return "\(model) \u{25B8} \(Int(inf.tokensPerSec.rounded())) tok/s"
+            }
+            let util = GPUSummary(gpus: snap.gpus).map { " \($0.avgUtilPct)%" } ?? ""
+            return model + util
         }
-        return util
+        return GPUSummary(gpus: snap.gpus).map { "\($0.avgUtilPct)%" }
     }
 }

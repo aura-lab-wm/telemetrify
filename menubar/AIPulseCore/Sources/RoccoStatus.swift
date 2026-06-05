@@ -154,13 +154,29 @@ public struct RoccoStatus: Codable, Equatable, Sendable {
         }
     }
 
+    /// LIVE inference activity, sampled from vLLM's Prometheus `/metrics`
+    /// by rocco-agent each tick. This is the "is the model WORKING right
+    /// now" signal the operator wanted — distinct from "is the process
+    /// up". `tokensPerSec` is the agent's delta of generation_tokens_total
+    /// over the poll interval, so it's nonzero only while tokens flow.
     public struct InferenceRecent: Codable, Equatable, Sendable {
-        public let requestsLast5m: Int
-        public let avgLatencyMs: Double
+        public let requestsRunning: Int
+        public let requestsWaiting: Int
+        public let tokensPerSec: Double
+
+        public init(requestsRunning: Int, requestsWaiting: Int, tokensPerSec: Double) {
+            self.requestsRunning = requestsRunning
+            self.requestsWaiting = requestsWaiting
+            self.tokensPerSec = tokensPerSec
+        }
+
+        /// True while at least one prompt is being generated.
+        public var isWorking: Bool { requestsRunning > 0 || tokensPerSec > 0 }
 
         enum CodingKeys: String, CodingKey {
-            case requestsLast5m = "requests_last_5m"
-            case avgLatencyMs = "avg_latency_ms"
+            case requestsRunning = "requests_running"
+            case requestsWaiting = "requests_waiting"
+            case tokensPerSec = "tokens_per_sec"
         }
     }
 

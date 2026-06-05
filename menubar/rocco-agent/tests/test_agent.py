@@ -454,3 +454,47 @@ def test_probe_via_manager_omits_tier_when_state_missing(tmp_path):
     assert result is not None
     assert result["tier"] is None
     assert result["free_gpus"] == []
+
+
+# ---------------------------------------------------------------------------
+# inference activity (vLLM /metrics)
+# ---------------------------------------------------------------------------
+
+_METRICS_SAMPLE = """\
+# HELP vllm:num_requests_running ...
+vllm:num_requests_running{engine="0",model_name="rocco"} 2.0
+vllm:num_requests_waiting{engine="0",model_name="rocco"} 1.0
+vllm:generation_tokens_total{engine="0",model_name="rocco"} 1000.0
+"""
+
+
+def test_parse_vllm_metrics_extracts_three_numbers(agent):
+    m = agent.parse_vllm_metrics(_METRICS_SAMPLE)
+    assert m["requests_running"] == 2
+    assert m["requests_waiting"] == 1
+    assert m["generation_tokens_total"] == 1000.0
+
+
+def test_inference_rate_first_sample_has_zero_rate(agent):
+    out = agent.inference_from_metrics(
+        running=1, waiting=0, gen_total=500.0, now=100.0,
+        prev={})
+    assert out["block"]["requests_running"] == 1
+    assert out["block"]["tokens_per_sec"] == 0.0
+    assert out["state"]["gen_total"] == 500.0
+
+
+def test_inference_rate_uses_delta_over_elapsed(agent):
+    prev = {"gen_total": 500.0, "ts": 100.0}
+    out = agent.inference_from_metrics(
+        running=1, waiting=0, gen_total=600.0, now=102.0, prev=prev)
+    # 100 tokens over 2s -> 50 tok/s
+    assert out["block"]["tokens_per_sec"] == 50.0
+
+
+def test_inference_rate_counter_reset_clamps_to_zero(agent):
+    # vLLM restarted -> counter went backwards; never report negative.
+    prev = {"gen_total": 900.0, "ts": 100.0}
+    out = agent.inference_from_metrics(
+        running=0, waiting=0, gen_total=10.0, now=102.0, prev=prev)
+    assert out["block"]["tokens_per_sec"] == 0.0

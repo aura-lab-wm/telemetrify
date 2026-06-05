@@ -12,6 +12,7 @@ final class MenuBarTitleTests: XCTestCase {
     }
 
     private func snapshot(running: Bool, model: String?, gpus: [RoccoStatus.GPU],
+                          inference: RoccoStatus.InferenceRecent? = nil,
                           ageSeconds: Int = 0, now: Date = Date()) -> RoccoStatus {
         RoccoStatus(
             schemaVersion: 1,
@@ -24,7 +25,7 @@ final class MenuBarTitleTests: XCTestCase {
             services: [],
             tier: 4,
             tierReason: "x",
-            inferenceRecent: nil,
+            inferenceRecent: inference,
             errors: []
         )
     }
@@ -64,5 +65,30 @@ final class MenuBarTitleTests: XCTestCase {
 
     func testNilSnapshotShowsNothing() {
         XCTAssertNil(MenuBarTitle.make(snapshot: nil, now: Date()))
+    }
+
+    func testWorkingShowsThroughputInsteadOfUtil() {
+        let now = Date()
+        let snap = snapshot(running: true, model: "Llama-3.1-WhiteRabbitNeo-2-70B",
+                            gpus: [gpu(util: 98)],
+                            inference: .init(requestsRunning: 1, requestsWaiting: 0,
+                                             tokensPerSec: 47.4), now: now)
+        XCTAssertEqual(MenuBarTitle.make(snapshot: snap, now: now), "WRN-2-70B \u{25B8} 47 tok/s")
+    }
+
+    func testQueuedButZeroRateStillCountsAsWorking() {
+        let now = Date()
+        let snap = snapshot(running: true, model: "Kimi-Dev-72B", gpus: [],
+                            inference: .init(requestsRunning: 2, requestsWaiting: 3,
+                                             tokensPerSec: 0), now: now)
+        XCTAssertEqual(MenuBarTitle.make(snapshot: snap, now: now), "Kimi-Dev-72B \u{25B8} 0 tok/s")
+    }
+
+    func testRunningButIdleFallsBackToUtil() {
+        let now = Date()
+        let snap = snapshot(running: true, model: "Kimi-Dev-72B", gpus: [gpu(util: 5)],
+                            inference: .init(requestsRunning: 0, requestsWaiting: 0,
+                                             tokensPerSec: 0), now: now)
+        XCTAssertEqual(MenuBarTitle.make(snapshot: snap, now: now), "Kimi-Dev-72B 5%")
     }
 }

@@ -10,33 +10,20 @@ final class ServiceRegistryTests: XCTestCase {
         XCTAssertTrue(ids.contains("vllm"))
     }
 
-    func testBuiltinsIncludeLocalOllama() {
-        // Local Mac-side Ollama (Ollama.app, :11434) gets a built-in row —
-        // distinct from any REMOTE ollama the rocco-agent discovers on the
-        // L40S box, which still flows in via merging(discovered:).
-        let builtins = ServiceRegistry.builtins()
-        guard let ollama = builtins.first(where: { $0.id == "ollama-local" }) else {
-            return XCTFail("ollama-local must be a built-in row")
-        }
-        XCTAssertEqual(ollama.kind,
-            .http(url: URL(string: "http://127.0.0.1:11434/api/version")!,
-                  summaryKey: "version"))
-        // Down/unknown → Start launches Ollama.app via the existing
-        // .openURL command (NSWorkspace.open handles app bundles).
-        let expectedStart = ServiceCommand.openURL(
-            URL(fileURLWithPath: "/Applications/Ollama.app"))
-        XCTAssertEqual(ollama.action(for: .down)?.label, "Start")
-        XCTAssertEqual(ollama.action(for: .down)?.command, expectedStart)
-        XCTAssertEqual(ollama.action(for: .unknown)?.command, expectedStart)
-        // Up → quick Stop (quit Ollama.app via pkill). Every service
-        // shows a lifecycle icon in every state now.
-        XCTAssertEqual(ollama.action(for: .up)?.command,
-                       .quitLocalApp(name: "Ollama"))
+    func testBuiltinsExcludeLocalOllama() {
+        // REGRESSION (removed 2026-06-05): the local Mac-side Ollama row
+        // ("ollama (mac)", :11434) was dropped — every claude launcher now
+        // routes through the LiteLLM gateway, so the gateway row is the
+        // operator's single local-inference signal. Remote ollama on the
+        // rocco box still flows in via merging(discovered:).
+        let ids = ServiceRegistry.builtins().map { $0.id }
+        XCTAssertFalse(ids.contains("ollama-local"),
+            "ollama-local must NOT be a built-in row anymore")
     }
 
-    func testMergingStillSurfacesRemoteOllamaDespiteLocalBuiltin() {
-        // The built-in is the LOCAL Mac instance; a discovered ollama on
-        // rocco is a different machine and must not be deduped away.
+    func testMergingStillSurfacesRemoteOllama() {
+        // A discovered ollama on rocco is not a built-in kind and must
+        // surface as its own known row.
         let discovered: [RoccoStatus.Service] = [
             RoccoStatus.Service(port: 11434, proc: "ollama", pid: 9999,
                                 kind: "ollama", command: "ollama serve",
@@ -45,16 +32,14 @@ final class ServiceRegistryTests: XCTestCase {
         let result = ServiceRegistry(services: ServiceRegistry.builtins())
             .merging(discovered: discovered)
         let ids = result.known.services.map { $0.id }
-        XCTAssertTrue(ids.contains("ollama-local"))
         XCTAssertTrue(ids.contains("discovered-11434-ollama-9999"),
-            "remote ollama must still surface alongside the local built-in")
+            "remote ollama must surface as a known row")
     }
 
     func testDiscoveredRowsNameTheHostNotTheUser() {
-        // "ollama (amastropaolo)" didn't say WHICH MACHINE it runs on —
-        // ambiguous next to the local "ollama (mac)" built-in. Discovered
-        // rows all come from the rocco-agent snapshot, so name the host;
-        // the owning user already shows in the row summary ("by …").
+        // "ollama (amastropaolo)" didn't say WHICH MACHINE it runs on.
+        // Discovered rows all come from the rocco-agent snapshot, so name
+        // the host; the owning user already shows in the summary ("by …").
         let discovered: [RoccoStatus.Service] = [
             RoccoStatus.Service(port: 11434, proc: "ollama", pid: 9999,
                                 kind: "ollama", command: "ollama serve",
@@ -66,8 +51,6 @@ final class ServiceRegistryTests: XCTestCase {
             $0.id == "discovered-11434-ollama-9999"
         }
         XCTAssertEqual(remote?.displayName, "ollama (rocco)")
-        let local = result.known.services.first { $0.id == "ollama-local" }
-        XCTAssertEqual(local?.displayName, "ollama (mac)")
     }
 
     func testMergingDedupesBuiltinKinds() {

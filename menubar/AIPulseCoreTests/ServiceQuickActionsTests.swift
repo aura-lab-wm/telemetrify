@@ -152,12 +152,6 @@ final class ServiceQuickActionsTests: XCTestCase {
         XCTAssertEqual(svc.action(for: .down)?.command, .startLocalAgent(label: label))
     }
 
-    func testLocalOllamaStopsViaQuitWhenUp() {
-        let svc = ServiceRegistry.builtins().first { $0.id == "ollama-local" }!
-        XCTAssertEqual(svc.action(for: .up)?.command, .quitLocalApp(name: "Ollama"))
-        XCTAssertEqual(svc.action(for: .down)?.label, "Start")
-    }
-
     func testPrimaryFlagBeatsDeclarationOrder() {
         // A secondary declared FIRST must not steal the gutter button.
         let svc = Service(

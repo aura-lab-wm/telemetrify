@@ -297,33 +297,12 @@ public struct ServiceRegistry: Sendable {
             ]
         ))
 
-        // LOCAL Mac-side Ollama (Ollama.app serving on :11434). Distinct
-        // from any remote ollama the rocco-agent discovers — that one
-        // still arrives via merging(discovered:). /api/version returns
-        // {"version":"0.24.0"} → summaryKey "version" → row reads "0.24.0".
-        if let versionURL = URL(string: "http://127.0.0.1:11434/api/version") {
-            out.append(Service(
-                id: "ollama-local",
-                displayName: "ollama (mac)",
-                kind: .http(url: versionURL, summaryKey: "version"),
-                clientURL: nil,
-                iconSymbol: "circle.hexagongrid",
-                scope: .local,
-                actions: [
-                    // Down/unknown → launch Ollama.app. Reuses .openURL:
-                    // NSWorkspace.open on an app-bundle file URL launches
-                    // it — no new ServiceCommand case needed. Up → quit
-                    // the app via pkill (it has no LaunchAgent label).
-                    ServiceAction(label: "Start",
-                                  showWhen: [.down, .unknown],
-                                  command: .openURL(
-                                    URL(fileURLWithPath: "/Applications/Ollama.app"))),
-                    ServiceAction(label: "Stop",
-                                  showWhen: [.up],
-                                  command: .quitLocalApp(name: "Ollama")),
-                ]
-            ))
-        }
+        // NOTE (2026-06-05): the local "ollama (mac)" built-in row was
+        // removed. Every claude launcher now routes through the LiteLLM
+        // gateway (:4000), so the gateway row is the single local-inference
+        // signal; a standalone Ollama row was redundant glance-noise.
+        // Remote ollama on the rocco box still arrives via
+        // merging(discovered:) as "ollama (rocco)".
 
         return out
     }
@@ -384,8 +363,8 @@ public struct ServiceRegistry: Sendable {
 
     /// Discovered rows all come from the rocco-agent snapshot, i.e. they
     /// run on the REMOTE host — name it, so "ollama (rocco)" reads
-    /// unambiguously next to the local "ollama (mac)" built-in. The
-    /// owning user already shows in the row summary ("… by amastropaolo").
+    /// unambiguously as the rocco-box instance. The owning user already
+    /// shows in the row summary ("… by amastropaolo").
     private func discoveredDisplayName(svc: RoccoStatus.Service,
                                        host: String) -> String {
         let kindStr = svc.kind ?? "unknown"

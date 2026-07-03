@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Command success-vs-fail + outcome_tag counts + unsupported-claim rate.
+#   bin/run-stats              # current rates + tag breakdown
+#   bin/run-stats --trend      # per-week trends
+#   bin/run-stats --trend --bucket day
+#   bin/run-stats --json
+set -eu
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m telemetrify.run_stats "$@"

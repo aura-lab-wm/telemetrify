@@ -453,6 +453,76 @@ def cluster_correction_breakdown(conn: sqlite3.Connection) -> dict:
     }
 
 
+def command_outcome_rate(conn: sqlite3.Connection) -> dict:
+    """Weekly command outcomes: stacked success / failure / unresolved, with
+    the success%-conditional-on-resolution line on y2. Unresolved (NULL
+    outcome_tag) is plotted as its own bar so the 81%-NULL gap is VISIBLE on
+    the dashboard — without it, a viewer reads success% as overall command
+    success, when it's actually P(success | regex resolved) and NULLs are
+    missing-not-at-random (resolution depends on tool verbosity)."""
+    from .run_events import outcome_trend
+
+    weeks = outcome_trend(conn, bucket="week")
+    x = [w["bucket"] for w in weeks]
+    succ = [w["success"] for w in weeks]
+    fail = [w["failure"] for w in weeks]
+    unres = [w["unresolved"] for w in weeks]
+    rate = [
+        (100.0 * s / (s + f)) if (s + f) else 0.0
+        for s, f in zip(succ, fail)
+    ]
+    return {
+        "data": [
+            {"type": "bar", "x": x, "y": succ, "name": "success",
+             "marker": {"color": "#ff9233"}},
+            {"type": "bar", "x": x, "y": fail, "name": "failure",
+             "marker": {"color": "#ef4444"}},
+            {"type": "bar", "x": x, "y": unres, "name": "unresolved (NULL)",
+             "marker": {"color": "#3f3f46"}},
+            {"type": "scatter", "mode": "lines+markers", "x": x, "y": rate,
+             "name": "success % | resolved",
+             "line": {"color": "#ff5c00", "width": 2},
+             "marker": {"size": 5}, "yaxis": "y2"},
+        ],
+        "layout": _layout("command outcome rate (weekly)", exhibit="Fig. 11",
+                          barmode="stack",
+                          xaxis={"title": "ISO week"},
+                          yaxis={"title": "run_events", "side": "left"},
+                          yaxis2={**_LEDGER_AXIS,
+                                  "title": {"text": "success % | resolved",
+                                     "font": {"family": "Newsreader, serif",
+                                              "color": "#71717a", "size": 11}},
+                                  "overlaying": "y", "side": "right",
+                                  "range": [0, 100], "ticksuffix": "%",
+                                  "showgrid": False}),
+    }
+
+
+def unsupported_claim_rate(conn: sqlite3.Connection) -> dict:
+    """Weekly unsupported-claim rate: of turns that asserted success, what
+    fraction had NO backing tool result. The top quality metric — it would
+    have caught the episode that prompted this work. Excludes no-claim turns
+    from the denominator (they aren't a failure)."""
+    from .evidence import unsupported_trend
+
+    weeks = unsupported_trend(conn, bucket="week")
+    x = [w["bucket"] for w in weeks]
+    y = [w["rate"] * 100.0 for w in weeks]
+    return {
+        "data": [{
+            "type": "scatter", "mode": "lines+markers",
+            "x": x, "y": y, "name": "unsupported %",
+            "line": {"color": "#ef4444", "width": 1.5},
+            "marker": {"color": "#ef4444", "size": 5},
+            "fill": "tozeroy", "fillcolor": "rgba(239,68,68,0.10)",
+        }],
+        "layout": _layout("unsupported-claim rate (weekly)", exhibit="Fig. 12",
+                          xaxis={"title": "ISO week"},
+                          yaxis={"title": "% of asserted turns",
+                                 "ticksuffix": "%", "range": [0, 100]}),
+    }
+
+
 def health(conn: sqlite3.Connection) -> dict:
     """Lightweight system-health snapshot. Returned to the dashboard tile."""
     sessions = conn.execute("SELECT COUNT(*) AS c FROM sessions").fetchone()["c"]
@@ -491,4 +561,6 @@ CHARTS = {
     "top_clusters": top_clusters,
     "cache_efficiency": cache_efficiency,
     "cluster_correction_breakdown": cluster_correction_breakdown,
+    "command_outcome_rate": command_outcome_rate,
+    "unsupported_claim_rate": unsupported_claim_rate,
 }

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Outcome-stamping CLI (telemetrify tag).
+#   bin/tag --turn <id> --outcome <tag> [--entity <run_event_id|tool_use_id>]
+#   bin/tag --turn <id> --auto            # re-stamp from output regexes
+#   bin/tag --init-config                 # seed data/outcome_rules.json
+set -eu
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/.venv/bin/python" -m telemetrify.tag_cli "$@"

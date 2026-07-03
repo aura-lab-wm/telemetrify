@@ -15,6 +15,8 @@ const CHARTS = [
   ["top_clusters",                 "chart-top-clusters"],
   ["cache_efficiency",             "chart-cache-efficiency"],
   ["cluster_correction_breakdown", "chart-cluster-correction-breakdown"],
+  ["command_outcome_rate",         "chart-command-outcome-rate"],
+  ["unsupported_claim_rate",       "chart-unsupported-claim-rate"],
 ];
 
 const PLOT_CONFIG = { responsive: true, displaylogo: false };

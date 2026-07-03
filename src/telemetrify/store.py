@@ -86,6 +86,26 @@ def insert_turn(
             (turn_id, serialize_embedding(prompt_embedding)),
         )
 
+    # run_events ledger — denormalize session_id + tool_name per Bash
+    # tool_call so analysis never needs the hand-join through turns/tool_calls
+    # (tool_calls has NO session_id column). Outcome stamped from OUTPUT
+    # ONLY via the config-driven rules. Best-effort: never break capture on
+    # a stamping failure. commit=False: the caller (capture.py / backfill)
+    # already holds the `with conn:` transaction — a nested commit here would
+    # flush a partial turn and defeat the caller's rollback.
+    if turn_id is not None:
+        try:
+            from .run_events import derive_for_turn
+            derive_for_turn(
+                conn, turn_id, turn.session_id,
+                project=(turn.cwd or ""),
+                source="capture",
+                tool_calls=turn.tool_calls,
+                commit=False,
+            )
+        except Exception:
+            pass
+
     return turn_id
 
 

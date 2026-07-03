@@ -83,14 +83,31 @@ def grade_turn(
     parsed = result.parsed
     raw_blob = compress(result.raw_text)
     with conn:
+        # Preserve the heuristic evidence_backed dimension across re-grade —
+        # the evidence heuristic writes that column independently, and a
+        # bare INSERT OR REPLACE would clobber it. COALESCE keeps any prior
+        # value when the grader re-scores a turn that already has evidence.
         conn.execute(
             """
-            INSERT OR REPLACE INTO auto_grades(
+            INSERT INTO auto_grades(
                 turn_id, quality, hallucination, completeness, refusal,
                 followed_request, notes, model, prompt_version,
-                generated_at, cost_usd, raw_json
+                generated_at, cost_usd, raw_json, evidence_backed
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(turn_id) DO UPDATE SET
+                quality          = excluded.quality,
+                hallucination    = excluded.hallucination,
+                completeness     = excluded.completeness,
+                refusal          = excluded.refusal,
+                followed_request = excluded.followed_request,
+                notes            = excluded.notes,
+                model            = excluded.model,
+                prompt_version   = excluded.prompt_version,
+                generated_at     = excluded.generated_at,
+                cost_usd          = excluded.cost_usd,
+                raw_json          = excluded.raw_json,
+                evidence_backed   = COALESCE(excluded.evidence_backed, auto_grades.evidence_backed)
             """,
             (
                 turn_id,
@@ -105,6 +122,7 @@ def grade_turn(
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 result.cost_usd,
                 raw_blob,
+                None,  # the grader never sets evidence_backed; COALESCE keeps prior
             ),
         )
     return parsed

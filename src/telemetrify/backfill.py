@@ -44,6 +44,10 @@ def ingest_file(conn, path: Path, do_embed: bool) -> tuple[int, int, int]:
                     skipped += 1
                 else:
                     inserted += 1
+                    # run_events are populated inside insert_turn (commit=False,
+                    # joining this `with conn:` transaction) — no separate
+                    # derive call here, which would nest a `with conn:` and
+                    # flush the partial turn.
         except Exception:
             errors += 1
             print(f"[error] {path.name}: {traceback.format_exc()}", file=sys.stderr)

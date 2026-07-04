@@ -53,6 +53,9 @@ data/vapid_public.pem
 # Editor / sed backups
 *.bak
 
+# Ad hoc Playwright verification screenshots — debug output, not a deliverable
+.playwright-shots/
+
 # macOS menubar app (Swift) — generated artifacts
 menubar/build/
 menubar/ai-pulse.xcodeproj/

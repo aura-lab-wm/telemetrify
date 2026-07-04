@@ -42,9 +42,31 @@ _LEDGER_BASE = {
     "plot_bgcolor":  "#0a0a0a",
     "font": {"family": "Geist Mono, JetBrains Mono, monospace",
              "color": "#a1a1aa", "size": 11},
-    # extra bottom margin so the horizontal legend doesn't collide with
-    # the x-axis title (e.g. "ISO week")
-    "margin": {"l": 56, "r": 24, "t": 56, "b": 84},
+    # Extra bottom margin so the horizontal legend doesn't collide with the
+    # x-axis title (e.g. "ISO week").
+    #
+    # NOTE ON WHY THIS ALONE ISN'T ENOUGH: this margin is a fixed pixel
+    # count, but the chart *div*'s rendered height is fluid (a CSS
+    # clamp() ranging ~230px on a phone up to ~500px on a 3440px+
+    # display), and Plotly positions the legend's `y` as a FRACTION of the
+    # plot area (div height minus margins) rather than as a fixed pixel
+    # offset. A fixed fraction of a shrinking plot area yields a shrinking
+    # ABSOLUTE pixel gap — so at most rendered heights the legend ends up
+    # too close to (or literally inside) the axis-title band. That's the
+    # bug a previous pass here shipped: a plausible-looking fixed
+    # margin/fraction pair that only actually cleared the axis title at
+    # the very tall end of the responsive range.
+    #
+    # The values below are a reasonable static fallback (used verbatim by
+    # any non-browser consumer of these layouts, e.g. tests or a raw
+    # /api/charts/<name> fetch). The dashboard itself does NOT rely on
+    # them being exactly right: dashboard.js re-derives both `margin.b`
+    # and `legend.y` from the chart div's *actual measured* clientHeight
+    # on every render (initial paint AND every subsequent resize/fold/
+    # devtools-emulation), which is the only way to guarantee a constant
+    # pixel clearance regardless of container height. See
+    # adaptLegendForHeight() in dashboard.js.
+    "margin": {"l": 56, "r": 24, "t": 56, "b": 96},
     "xaxis": _LEDGER_AXIS,
     "yaxis": _LEDGER_AXIS,
     "colorway": LEDGER_PALETTE,
@@ -54,7 +76,7 @@ _LEDGER_BASE = {
                         "color": "#a1a1aa"},
                "bgcolor": "rgba(0,0,0,0)", "borderwidth": 0,
                "orientation": "h",
-               "yanchor": "top", "y": -0.32,
+               "yanchor": "top", "y": -0.42,
                "xanchor": "left", "x": 0},
     "hoverlabel": {"bgcolor": "#111111", "bordercolor": "rgba(255,92,0,0.4)",
                    "font": {"family": "Geist Mono, monospace",
@@ -87,6 +109,24 @@ def _layout(title: str, exhibit: str | None = None, **extra: Any) -> dict:
     return layout
 
 
+def _shorten_tool_name(name: str, keep: int = 30) -> str:
+    """Shorten a long MCP tool name for axis-label display.
+
+    MCP tool names are shaped like "mcp__servername__toolname" — the part
+    that actually distinguishes one tool from another is almost always the
+    TAIL (the server + tool segments), not the common "mcp__" prefix. On a
+    narrow (phone-width) plate there isn't room for the full name and
+    Plotly's y-axis simply clips it hard from the left with no ellipsis —
+    which silently drops the distinguishing tail and leaves no indication
+    text is missing. Keep the last `keep` characters and prefix with an
+    ellipsis instead, so what survives is the meaningful part and the
+    truncation is visibly marked.
+    """
+    if not name or len(name) <= keep:
+        return name
+    return "…" + name[-keep:]
+
+
 def turns_per_day(conn: sqlite3.Connection) -> dict:
     """Line chart of turn counts per UTC day, last 90 days."""
     rows = conn.execute(
@@ -113,8 +153,25 @@ def turns_per_day(conn: sqlite3.Connection) -> dict:
     }
 
 
+# tokens_by_model's legend is horizontal and, once dashboard.js's
+# adaptLegendForHeight switches it to vertical to avoid the axis-title
+# collision (see dashboard.js), one row per series -- an unbounded model
+# list (new models show up in the data over time) grows the legend's
+# rendered height without limit, which is exactly the "self-overlapping
+# legend" failure mode reported against this chart. Capping the series
+# count at a number the JS-side reservation math can comfortably fit even
+# on the shortest (phone, ~230px-tall) chart container keeps the legend a
+# bounded size no matter how many distinct models the data accumulates.
+_MAX_MODEL_SERIES = 4
+
+
 def tokens_by_model(conn: sqlite3.Connection) -> dict:
-    """Stacked area chart, daily total tokens per model."""
+    """Stacked area chart, daily total tokens per model.
+
+    Only the top `_MAX_MODEL_SERIES` models by total token volume get their
+    own series/legend entry; the rest are folded into a single "other"
+    series so the legend can't grow indefinitely as new models appear.
+    """
     rows = conn.execute(
         """
         SELECT date(started_at) AS d,
@@ -137,8 +194,14 @@ def tokens_by_model(conn: sqlite3.Connection) -> dict:
             seen_days.add(d)
             days.append(d)
 
+    totals = {m: sum(by_day.values()) for m, by_day in per_model.items()}
+    ranked = sorted(per_model, key=lambda m: totals[m], reverse=True)
+    kept = sorted(ranked[:_MAX_MODEL_SERIES])
+    overflow = ranked[_MAX_MODEL_SERIES:]
+
     traces = []
-    for i, (model, by_day) in enumerate(sorted(per_model.items())):
+    for i, model in enumerate(kept):
+        by_day = per_model[model]
         traces.append({
             "type": "scatter", "mode": "lines",
             "stackgroup": "one",
@@ -146,6 +209,19 @@ def tokens_by_model(conn: sqlite3.Connection) -> dict:
             "y": [by_day.get(d, 0) for d in days],
             "name": model,
             "line": {"color": LEDGER_PALETTE[i % len(LEDGER_PALETTE)], "width": 0.5},
+        })
+    if overflow:
+        other_by_day: dict[str, int] = defaultdict(int)
+        for m in overflow:
+            for d, tok in per_model[m].items():
+                other_by_day[d] += tok
+        traces.append({
+            "type": "scatter", "mode": "lines",
+            "stackgroup": "one",
+            "x": days,
+            "y": [other_by_day.get(d, 0) for d in days],
+            "name": f"other ({len(overflow)} models)",
+            "line": {"color": "#3f3f46", "width": 0.5},
         })
     return {
         "data": traces,
@@ -184,6 +260,11 @@ def tool_heatmap(conn: sqlite3.Connection) -> dict:
         cell[(r["tool"], r["wk"])] = r["n"]
 
     z = [[cell.get((tool, wk), 0) for wk in weeks] for tool in tools]
+    # Display labels are shortened (see _shorten_tool_name) so the y-axis
+    # never silently clips a long "mcp__servername__toolname" from the
+    # left with no ellipsis — grouping above is still keyed on the full,
+    # untruncated tool name, only the label shown on the axis is shortened.
+    tool_labels = [_shorten_tool_name(t) for t in tools]
     # Custom warm colorscale: lamplit ink → phosphor amber → bright cream
     ledger_scale = [
         [0.00, "#0a0a0a"],
@@ -195,7 +276,9 @@ def tool_heatmap(conn: sqlite3.Connection) -> dict:
     return {
         "data": [{
             "type": "heatmap",
-            "x": weeks, "y": tools, "z": z,
+            "x": weeks, "y": tool_labels, "z": z,
+            "hovertext": [[tool] * len(weeks) for tool in tools],
+            "hovertemplate": "%{hovertext}<br>%{x}: %{z}<extra></extra>",
             "colorscale": ledger_scale,
             "showscale": True,
             "colorbar": {"thickness": 8, "len": 0.7,
@@ -205,7 +288,12 @@ def tool_heatmap(conn: sqlite3.Connection) -> dict:
         }],
         "layout": _layout("tool calls heatmap (tool × ISO week)", exhibit="Fig. 3",
                           xaxis={"title": "ISO week"},
-                          yaxis={"title": "tool"}),
+                          # Generous static left margin so the (already-
+                          # shortened) tool names have room on first paint,
+                          # before dashboard.js's automargin/tickfont
+                          # adaptation can run for genuinely narrow plates.
+                          yaxis={"title": "tool", "automargin": True},
+                          margin={**_LEDGER_BASE["margin"], "l": 170}),
     }
 
 

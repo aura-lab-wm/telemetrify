@@ -1269,17 +1269,23 @@ body.v-page .queue-empty p { margin-top: 8px; font-size: 14px; }
    class names inherited from the old HUD scaffold. Restyle them in the
    v-page idiom so they read as the same product as /ask + /queue.       */
 
+/* Fluid page frame — a single clamp() covers the whole 320→3840px range for
+   outer gutters instead of jumping between fixed values at a couple of
+   breakpoints. A max-width cap kicks in on very large monitors (see the
+   ultrawide block near the end of this section) so content doesn't stretch
+   into unreadable, gutter-starved rows. */
 body.v-page .ledger-page {
   width: 100%; max-width: none; margin: 0;
-  padding: 48px clamp(20px, 3vw, 56px) 96px;
+  padding: clamp(24px, 4vw, 56px) clamp(14px, 3.4vw, 56px) clamp(56px, 7vw, 104px);
   animation: v-shell-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* masthead */
-body.v-page .masthead { margin-bottom: var(--s-8); }
+body.v-page .masthead { margin-bottom: clamp(24px, 4vw, 48px); }
 body.v-page .masthead-rule {
-  display: flex; align-items: center; gap: 14px;
-  padding-bottom: 12px; margin-bottom: 22px;
+  display: flex; align-items: center; flex-wrap: wrap;
+  row-gap: 6px; column-gap: 12px;
+  padding-bottom: 12px; margin-bottom: clamp(16px, 3vw, 22px);
   border-bottom: 1px solid var(--rule);
   position: relative;
 }
@@ -1292,35 +1298,73 @@ body.v-page .folio-section {
   font-family: var(--font-mono); font-size: 10px;
   text-transform: uppercase; letter-spacing: 0.16em;
   color: var(--ink-low); font-weight: 500;
+  white-space: nowrap;
 }
 body.v-page .folio { color: var(--phosphor); }
-body.v-page .folio-spacer { flex: 1; }
+body.v-page .folio-spacer { flex: 1 1 auto; min-width: 8px; }
 body.v-page .folio-meta {
   font-family: var(--font-mono); font-size: 11px; color: var(--ink-low);
+  white-space: nowrap;
 }
 body.v-page .masthead-title {
   font-family: var(--font-sans);
-  font-size: clamp(48px, 6vw, 72px); font-weight: 600;
-  letter-spacing: -0.045em; line-height: 0.95;
-  margin: 0 0 14px;
+  /* fluid from a 320px phone up through a 14" laptop; a real breakpoint
+     bump (below) carries it further on desktop/ultrawide, since a linear
+     clamp reaching 96px+ would need an unreasonably large max-width bound
+     to still look intentional at 375px. */
+  font-size: clamp(34px, 5.6vw + 14px, 76px);
+  font-weight: 600;
+  letter-spacing: -0.04em; line-height: 0.98;
+  margin: 0 0 clamp(10px, 1.6vw, 14px);
   color: var(--ink);
+  overflow-wrap: break-word;
   background: linear-gradient(95deg, var(--ink) 0%, var(--ink) 55%, var(--phosphor) 100%);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 body.v-page .masthead-sub {
-  font-family: var(--font-sans); font-size: 16px;
-  color: var(--ink-mid); max-width: 720px; line-height: 1.55; margin: 0;
+  font-family: var(--font-sans); font-size: clamp(13px, 1vw + 11px, 16px);
+  color: var(--ink-mid); max-width: 72ch; line-height: 1.55; margin: 0;
 }
 body.v-page .masthead-sub .muted { color: var(--ink-low); }
 
-/* narrative fold */
-body.v-page .fold { margin: var(--s-6) 0 var(--s-8); }
+/* Desktop/ultrawide: let the masthead title claim real scale once there's
+   genuinely room for it — a structural bump, not just more clamp() growth,
+   so 1920px+ doesn't read like a slightly-bigger laptop layout. */
+@media (min-width: 1920px) {
+  body.v-page .masthead-title { font-size: 96px; }
+  body.v-page .masthead-sub { font-size: 17px; max-width: 80ch; }
+}
+@media (min-width: 2560px) {
+  body.v-page .masthead-title { font-size: 112px; }
+}
+
+/* narrative fold — exactly 6 stat items (sessions/turns/tokens/follow-up
+   rate/clusters/annotations). A fluid `repeat(auto-fit, minmax(...))` track
+   looks tidy right up until the item count doesn't divide evenly into
+   however many tracks happen to fit a given width: auto-fit only collapses
+   tracks that are *entirely* unused, so a partially-filled trailing row
+   (e.g. 6 items across 4 or 5 auto-fit columns) still renders empty,
+   bordered cells for the remainder — unfinished-looking, not fluid. Fixed
+   breakpoints that only ever step through divisors of 6 (1 → 2 → 3 → 6)
+   sidestep that entirely: every row this grid ever renders is either full
+   or (on mobile) a single lonely column, never a partial row with holes. */
+body.v-page .fold { margin: clamp(18px, 3vw, 24px) 0 clamp(28px, 4vw, 48px); }
 body.v-page .fold-row {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 1px; background: var(--rule); border: 1px solid var(--rule);
   border-radius: var(--r-3); overflow: hidden;
   position: relative;
+}
+@media (min-width: 480px) {
+  body.v-page .fold-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 680px) {
+  body.v-page .fold-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 960px) {
+  body.v-page .fold-row { grid-template-columns: repeat(6, 1fr); }
 }
 body.v-page .fold-row::before {
   content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
@@ -1329,30 +1373,41 @@ body.v-page .fold-row::before {
 }
 body.v-page .fold-item {
   display: flex; flex-direction: column; gap: 4px;
-  padding: 16px 18px; background: var(--panel);
+  padding: clamp(12px, 1.6vw, 18px) clamp(12px, 1.8vw, 20px);
+  background: var(--panel);
+  min-width: 0;
 }
 body.v-page .fold-label {
   font-family: var(--font-mono); font-size: 10px;
   text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-low);
 }
 body.v-page .fold-value {
-  font: 600 22px var(--font-mono); color: var(--ink);
+  font: 600 clamp(18px, 1.4vw + 14px, 26px) var(--font-mono); color: var(--ink);
   font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  overflow-wrap: break-word;
+}
+/* Ultrawide: give the fold room to breathe rather than six thin slivers
+   stretched across 3440px+ of canvas. (grid-template-columns is already
+   repeat(6, 1fr) from the >=960px breakpoint above — only the value size
+   needs bumping here.) */
+@media (min-width: 2200px) {
+  body.v-page .fold-value { font-size: 30px; }
 }
 
 /* digest banner */
 body.v-page .digest-banner {
   background: linear-gradient(180deg, var(--vtint-grad-1), var(--vtint-grad-2));
   border: 1px solid var(--vtint-border);
-  border-radius: var(--r-3); padding: 16px 20px;
-  margin-bottom: var(--s-6); position: relative;
+  border-radius: var(--r-3); padding: clamp(13px, 1.8vw, 16px) clamp(14px, 2vw, 20px);
+  margin-bottom: clamp(18px, 3vw, 24px); position: relative;
 }
 body.v-page .digest-banner::before {
   content: ""; position: absolute; top: 0; left: 0; width: 80px; height: 1px;
   background: var(--phosphor);
 }
 body.v-page .digest-header {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+  display: flex; align-items: baseline; flex-wrap: wrap;
+  gap: 6px 12px; margin-bottom: 8px;
 }
 body.v-page .digest-tag {
   font-family: var(--font-mono); font-size: 10px;
@@ -1362,20 +1417,22 @@ body.v-page .digest-date {
   font-family: var(--font-mono); font-size: 11px; color: var(--ink-low);
 }
 body.v-page .digest-body {
-  font-family: var(--font-sans); font-size: 14px; line-height: 1.6;
-  color: var(--ink); margin: 0; font-style: normal;
+  font-family: var(--font-sans); font-size: clamp(13px, 0.5vw + 12px, 14px);
+  line-height: 1.6; color: var(--ink); margin: 0; font-style: normal;
+  overflow-wrap: break-word;
 }
 
 /* plate groups */
-body.v-page .plate-group { margin-top: var(--s-10); }
+body.v-page .plate-group { margin-top: clamp(28px, 4.5vw, 48px); }
 body.v-page .plate-group-title {
-  display: flex; align-items: baseline; gap: var(--s-3);
+  display: flex; align-items: baseline; flex-wrap: wrap;
+  gap: 8px var(--s-3);
   padding-bottom: 10px; margin-bottom: 8px;
   border-bottom: 1px solid var(--rule);
   font-family: var(--font-sans);
 }
 body.v-page .plate-group-title em {
-  font-style: normal; font-weight: 600; font-size: 16px;
+  font-style: normal; font-weight: 600; font-size: clamp(14px, 0.6vw + 13px, 17px);
   color: var(--ink); letter-spacing: -0.02em;
 }
 body.v-page .plate-group-id {
@@ -1389,18 +1446,21 @@ body.v-page .plate-group-id {
    smaller uppercase label size are specific to this usage. The extra
    ".pill" in the selector bumps specificity above the later
    `.badge, .anno-badge, .pill { font-size: 11px }` rule so this override
-   actually sticks. */
+   actually sticks. On narrow rows the pill wraps onto its own line rather
+   than forcing horizontal overflow (flex-wrap above + this margin-left
+   collapsing to 0 when it's alone on a line). */
 body.v-page .pill.plate-group-flag {
   margin-left: auto;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
+  white-space: nowrap;
 }
 /* one-line kicker explaining what each group measures — this is the
    "improved visual hierarchy" ask: a reader should know what a section is
    for before parsing any chart in it. */
 body.v-page .plate-group-desc {
-  margin: 0 0 16px;
+  margin: 0 0 clamp(12px, 1.6vw, 16px);
   font-family: var(--font-sans); font-size: 13px; line-height: 1.55;
   color: var(--ink-low); max-width: 78ch;
 }
@@ -1410,7 +1470,7 @@ body.v-page .plate-group-desc {
    the digest-banner treatment used elsewhere on this page (same
    --vtint-* custom properties, so the two can't drift apart again). */
 body.v-page .plate-group.featured {
-  padding: 20px 22px 22px;
+  padding: clamp(14px, 2vw, 20px) clamp(14px, 2.2vw, 22px) clamp(16px, 2.2vw, 22px);
   border: 1px solid var(--vtint-border);
   border-radius: var(--r-3);
   background: linear-gradient(180deg, var(--vtint-grad-1), var(--vtint-grad-2));
@@ -1427,50 +1487,94 @@ body.v-page .plate-group.featured .plate:hover {
 }
 body.v-page .plate-group.featured .plate::before { width: 48px; opacity: 1; }
 
-/* plates */
-body.v-page .plates { display: grid; gap: var(--s-3); }
-body.v-page .plates.two-up { grid-template-columns: 1fr 1fr; }
-body.v-page .plates.wide-then-two {
-  grid-template-columns: 2fr 1fr 1fr;
-  grid-template-rows: auto;
+/* ── plates — the responsive core of this page ──────────────────────────
+   Mobile-first: every layout starts as a single column (no breakpoint
+   needed to make a 320px phone work — it's simply the default). Real
+   breakpoints then introduce STRUCTURAL column changes at the points where
+   a fluid technique alone can't do the job (phone → tablet → laptop →
+   desktop is a step change in available columns, not a smooth curve).
+   Chart/plate sizing within each structural state stays fluid via clamp().
+   ───────────────────────────────────────────────────────────────────── */
+body.v-page .plates {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(10px, 1.6vw, 16px);
 }
-body.v-page .plates.four-up { grid-template-columns: repeat(4, 1fr); }
-body.v-page .plates.one-up { grid-template-columns: 1fr; margin-top: var(--s-3); }
-/* Tablet & smaller laptop: collapse to single column */
-@media (max-width: 900px) {
+
+/* The trailing "wide" plate in four-up (cache-efficiency) always claims its
+   own full-width row, at ANY column count from 1 to 4 — safe because it's
+   the LAST item in DOM order, so spanning it never leaves an empty gap
+   behind it (nothing left to place). This rule is intentionally declared
+   BEFORE the wide-then-two breakpoints below: at ≥1180px wide-then-two
+   resets its own .plate.wide back to `auto` (same selector specificity, so
+   source order decides) to switch from "wide row, two below" to a single
+   unequal-width row — if this base rule were declared *after* that reset
+   it would silently clobber it at every width ≥1180px, which is exactly
+   the bug an earlier draft of this file had. Scoped to four-up/
+   wide-then-two only: two-up's "wide" plates (e.g.
+   cluster-correction-breakdown) are deliberately left un-spanned so both
+   plates in that pair stay side by side. */
+body.v-page .plates.four-up .plate.wide,
+body.v-page .plates.wide-then-two .plate.wide {
+  grid-column: 1 / -1;
+}
+
+/* Phablet / small-tablet-and-up (≈ landscape phones, 7" tablets): every
+   multi-plate group goes 2-up. For "four-up" this is a 2×2/2×3 grid; for
+   "wide-then-two" the leading wide plate spans the full row (via the rule
+   above) with the other two filling the row underneath — a deliberate
+   structural change, not achievable with clamp() alone. */
+@media (min-width: 640px) {
   body.v-page .plates.two-up,
-  body.v-page .plates.wide-then-two,
-  body.v-page .plates.four-up { grid-template-columns: 1fr; }
+  body.v-page .plates.four-up,
+  body.v-page .plates.wide-then-two { grid-template-columns: repeat(2, 1fr); }
 }
-/* Mid-width laptop: four-up breathes as a 2×2 grid before collapsing fully.
-   Upper bound aligned to the existing 1280px breakpoint below (was a
-   one-off 1399px band) so the file only has two breakpoint values: 900/1280. */
-@media (min-width: 901px) and (max-width: 1279px) {
-  body.v-page .plates.four-up { grid-template-columns: 1fr 1fr; }
-}
-/* 14" laptop sweet spot (≥1280px): plates breathe a bit more */
+
+/* Small-laptop-and-up: four-up claims all four columns in a single row. */
 @media (min-width: 1280px) {
-  body.v-page .plate { min-height: 380px; }
-  body.v-page .chart { height: 360px; }
-  body.v-page .chart-tall { height: 480px; }
+  body.v-page .plates.four-up { grid-template-columns: repeat(4, 1fr); }
 }
-/* Larger external displays: tighter chart heights, bigger grids */
+
+/* Small-laptop-and-up: wide-then-two switches from "wide row, two below" to
+   a single unequal-width row (2fr/1fr/1fr) — there's finally enough room
+   for all three plates side by side without the wide one crowding the
+   others. Reset the span from the tablet tier so the ratio columns apply
+   instead of a forced full-width row. */
+@media (min-width: 1180px) {
+  body.v-page .plates.wide-then-two { grid-template-columns: 2fr 1fr 1fr; }
+  body.v-page .plates.wide-then-two .plate.wide { grid-column: auto; }
+}
+/* Large external displays: flatten the ratio a touch so the heatmap doesn't
+   dominate quite as much once there's this much horizontal room. */
 @media (min-width: 1600px) {
-  body.v-page .plates.wide-then-two {
-    grid-template-columns: 1.5fr 1fr 1fr;
-  }
-  body.v-page .chart-tall { height: 520px; }
+  body.v-page .plates.wide-then-two { grid-template-columns: 1.6fr 1fr 1fr; }
+}
+
+/* Ultrawide monitors: use the extra real estate for genuinely bigger plates
+   and chart canvases rather than stretching four equal columns into
+   enormous, sparse cells — see also the .ledger-page max-width cap above,
+   which keeps the row from becoming absurdly long before this kicks in. */
+@media (min-width: 2200px) {
+  body.v-page .plates { gap: 20px; }
 }
 
 body.v-page .plate {
   position: relative;
   background: var(--panel); border: 1px solid var(--rule);
-  border-radius: var(--r-3); padding: 14px;
-  min-height: 360px;
-  transition: border-color 0.15s, transform 0.15s;
+  border-radius: var(--r-3);
+  padding: clamp(10px, 1.6vw, 16px);
+  /* min-width: 0 is load-bearing — without it a grid item's default
+     min-width:auto (= its content's min-content size) can force the track
+     wider than the column, which is exactly the kind of Plotly-container
+     horizontal overflow this pass is meant to eliminate. */
+  min-width: 0;
+  min-height: clamp(240px, 9vw + 210px, 400px);
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 body.v-page .plate:hover {
   border-color: var(--rule-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.5);
 }
 body.v-page .plate::before {
   /* corner tick — single 1px orange line in top-left */
@@ -1479,37 +1583,87 @@ body.v-page .plate::before {
   opacity: 0.7;
 }
 body.v-page .plate.wide::before { width: 56px; opacity: 1; }
-body.v-page .chart { width: 100%; height: 340px; }
-body.v-page .chart-tall { height: 460px; }
+
+body.v-page .chart {
+  width: 100%; min-width: 0;
+  height: clamp(230px, 9vw + 190px, 400px);
+}
+body.v-page .chart-tall { height: clamp(300px, 10vw + 250px, 560px); }
+@media (min-width: 2560px) {
+  body.v-page .chart      { height: 460px; }
+  body.v-page .chart-tall { height: 620px; }
+}
+@media (min-width: 3440px) {
+  body.v-page .chart      { height: 500px; }
+  body.v-page .chart-tall { height: 680px; }
+}
 body.v-page .chart-error {
   color: var(--burgundy); font-family: var(--font-mono); font-size: 12px;
   padding: 16px;
+  overflow-wrap: break-word;
 }
 
-/* ledger-footer in v-page */
+/* Plotly renders the "Fig. N · …" figure caption as native SVG <text>
+   (the .gtitle element), which cannot use CSS text-wrap or text-overflow:
+   ellipsis the way an HTML caption could. dashboard.js proactively wraps
+   titles it estimates won't fit a narrow plate (adaptTitleForWidth), but
+   that's a character-count estimate, not an exact glyph measurement — the
+   real rendered width depends on which font actually loads (Geist/Inter
+   vs. a wider fallback), so a title can still end up wider than the plate
+   at some viewport/plate-width combinations the estimate didn't catch.
+   Nested <svg> elements default to `overflow: hidden` in the UA
+   stylesheet, so when that happens the excess title text is silently
+   clipped mid-word at the card's right edge — no ellipsis, no visual cue
+   anything is missing. Overriding that default to `visible` here doesn't
+   let chart DATA bleed outside the plot area (Plotly always scopes bars/
+   lines/gridlines with their own internal <clipPath>, independent of this
+   property) — it only stops the outer SVG boundary from silently eating
+   title text that doesn't fit, so the worst case becomes "title runs a
+   little wide" instead of "title vanishes with no indication". */
+body.v-page .plate .chart svg.main-svg { overflow: visible; }
+
+/* Ultra-wide framing — a sensible max content width so a 3440/3840px
+   monitor gets purposefully bigger plates and generous margins instead of
+   the same layout smeared across huge empty gutters. */
+@media (min-width: 2100px) {
+  body.v-page .ledger-page { max-width: 2000px; margin: 0 auto; }
+}
+@media (min-width: 3000px) {
+  body.v-page .ledger-page { max-width: 2400px; }
+}
+
+/* ledger-footer in v-page — wraps onto multiple lines on narrow viewports
+   instead of forcing horizontal overflow; footer-spacer collapses to 0 once
+   it wraps so the notify toggle doesn't strand itself with a huge gap. */
 body.v-page .ledger-footer {
-  margin-top: var(--s-12); padding-top: var(--s-4);
+  margin-top: clamp(32px, 5vw, 48px); padding-top: var(--s-4);
   border-top: 1px solid var(--rule);
-  display: flex; gap: 14px; align-items: center;
+  display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center;
   color: var(--ink-low); font-size: 12px;
   font-family: var(--font-sans);
 }
 body.v-page .ledger-footer .rule { display: none; }
-body.v-page .footer-text { font-family: var(--font-mono); font-size: 11px; color: var(--ink-low); }
+body.v-page .footer-text {
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink-low);
+  overflow-wrap: break-word; min-width: 0;
+}
 body.v-page .footer-text code {
   background: var(--panel-2); color: var(--ink); border: 1px solid var(--rule);
   padding: 1px 5px; border-radius: var(--r-1);
 }
 body.v-page .footer-text a { color: var(--phosphor); }
 
-/* notify toggle in v-page footer */
-body.v-page .footer-spacer { flex: 1; }
+/* notify toggle in v-page footer — padding sized for a comfortable tap
+   target (≈36px tall including border) even on phone-width viewports. */
+body.v-page .footer-spacer { flex: 1 1 0; min-width: 0; }
 body.v-page .notify-toggle {
   background: transparent; border: 1px solid var(--rule); color: var(--ink-mid);
   font-family: var(--font-mono); font-size: 10px;
   letter-spacing: 0.12em; text-transform: uppercase;
-  padding: 5px 10px; border-radius: var(--r-1); cursor: pointer;
+  padding: 9px 12px; border-radius: var(--r-1); cursor: pointer;
   display: inline-flex; align-items: center; gap: 8px;
+  min-height: 36px;
+  flex-shrink: 0;
 }
 body.v-page .notify-toggle:hover { color: var(--ink); border-color: var(--phosphor); }
 body.v-page .notify-toggle[data-state="on"] { color: var(--phosphor); border-color: var(--phosphor); }
@@ -1698,13 +1852,10 @@ body.v-page .response-body { max-width: none; }
 
 /* meta lines wrap nicely on narrow screens */
 @media (max-width: 760px) {
-  body.v-page .topbar { flex-wrap: wrap; gap: 12px; }
-  body.v-page .topnav { order: 3; flex: 1 1 100%; }
-  body.v-page .search { max-width: none; }
   body.v-page main { padding: 24px 16px; }
-  body.v-page .v-shell,
-  body.v-page .ledger-page { padding: 32px 16px 64px; }
-  body.v-page .masthead-title,
+  body.v-page .v-shell { padding: 32px 16px 64px; }
+  /* .ledger-page padding is fully fluid now (see the clamp()-based rule
+     above) so it's intentionally left out of this fixed override. */
   body.v-page .ask-title { font-size: clamp(36px, 9vw, 48px); }
   body.v-page .queue-card-row {
     grid-template-columns: 24px 1fr;
@@ -1716,6 +1867,89 @@ body.v-page .response-body { max-width: none; }
   body.v-page .queue-card-row > .queue-score-block { grid-column: 2; grid-row: 1; flex-direction: row; align-items: center; gap: 12px; }
   body.v-page .queue-card-row > .queue-body       { grid-column: 1 / -1; grid-row: 2; }
   body.v-page .queue-card-row > .queue-right     { display: none; }
+}
+
+/* ── Topbar — phone/tablet nav pattern ────────────────────────────────────
+   Seven nav links + a search bar + a live-status chip need ~990px of
+   un-shrinking min-content width as a single row — measured directly with
+   Playwright across a run of real device widths, every one of 768 / 800 /
+   820 / 896 / 900 / 960px overflowed the viewport by 30-215px (the search
+   input and/or the status chip got shoved clean off the right edge). The
+   original cutoff here was 1023px on the assumption that 1024px+ had room
+   to spare — re-measured directly (also via Playwright): it doesn't. The
+   nav's 7 links are ~637px of un-shrinking content; `.search` has no
+   min-width of its own, so the flex algorithm happily squeezes its outer
+   box down to whatever's left (as little as ~35-90px in the 1024-1100px
+   range) — but the `<input>` inside it still needs its own fixed padding
+   (36px icon + 78px ⌘K hint = 114px) and doesn't shrink below that, so it
+   overflows its own shrunk parent and draws on top of the status pill next
+   to it, hiding the live dot and part of the "live · …" text. The status
+   pill's label is live text (elapsed time + rate) so its natural width
+   varies; solving this by hand-tuning a `.search` min-width would just
+   move the same collision to a different width whenever the pill's label
+   is a little longer. Simplest robust fix: push the cutoff out to 1179px
+   (just under the next real breakpoint in this file, 1180px) so the whole
+   pinch zone uses the wrap pattern below, which was already designed to
+   share a row between `.search` and `.topbar-pulse` safely (kbd hint
+   hidden, search's own min-width: 0 is fine there since nothing needs to
+   share space with it beyond the shrink-safe pulse). ────────────────── */
+@media (max-width: 1179px) {
+  /* the desktop topbar is a fixed-height single row (height: 56px, set
+     earlier in this file) — that has to come off here or the wrapped
+     second row (the nav strip) gets clipped instead of actually showing. */
+  body.v-page .topbar {
+    flex-wrap: wrap; align-items: center;
+    height: auto; min-height: 56px;
+    gap: 8px 12px; padding: 10px clamp(12px, 4vw, 20px);
+  }
+  body.v-page .topbar-rule { display: none; }
+  body.v-page .brand { padding-right: 0; }
+  body.v-page .search {
+    order: 1; flex: 1 1 120px; width: auto; min-width: 0; max-width: none;
+  }
+  body.v-page .search-kbd { display: none; }
+  body.v-page .topbar-pulse { order: 2; flex-shrink: 0; }
+  body.v-page .topnav {
+    order: 3; flex: 1 1 100%;
+    flex-wrap: nowrap; overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding: 2px 2px 6px;
+    margin: 0 -2px;
+    mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  }
+  body.v-page .topnav::-webkit-scrollbar { height: 4px; }
+  body.v-page .topnav::-webkit-scrollbar-thumb { background: var(--vborder-hov); border-radius: 4px; }
+  /* Comfortable tap targets — a 320px-wide phone still gets ~40px-tall,
+     easily-thumbable nav links, search input, and status chip. */
+  body.v-page .topnav a {
+    flex-shrink: 0; white-space: nowrap;
+    padding: 10px 12px; min-height: 40px;
+  }
+  body.v-page .search input,
+  body.v-page .search button { min-height: 40px; }
+  body.v-page .notify-toggle { min-height: 40px; padding: 10px 14px; }
+}
+@media (max-width: 480px) {
+  body.v-page .wordmark { font-size: 14px; }
+  body.v-page .topbar-pulse__label { display: none; }
+  body.v-page .search { flex-basis: 90px; }
+  body.v-page .search input { padding-left: 32px; padding-right: 12px; font-size: 12px; }
+  body.v-page .search-affix { left: 10px; }
+}
+
+
+/* ── Topbar — ultrawide framing ───────────────────────────────────────
+   The topbar's translucent bar deliberately stays full-bleed (capping its
+   width would leave dead, un-tinted canvas at the edges of a 3440/3840px
+   monitor) — instead its own horizontal padding keeps growing past the
+   clamp()'s ~56px ceiling so brand/nav/search don't creep uncomfortably
+   close to the viewport edge. */
+@media (min-width: 2200px) {
+  body.v-page .topbar { padding-left: 96px; padding-right: 96px; }
+}
+@media (min-width: 3000px) {
+  body.v-page .topbar { padding-left: 140px; padding-right: 140px; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────

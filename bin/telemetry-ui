@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch the FastAPI UI on localhost:8765.
+# Launch the FastAPI UI on localhost:8767.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${PORT:-8767}"

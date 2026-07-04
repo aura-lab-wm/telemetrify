@@ -36,25 +36,33 @@ _uninstall_agent() {
   echo "uninstalled: $label"
 }
 
+# The launchd plist is the actual source of truth for the port the running
+# UI listens on (it's hardcoded in ProgramArguments' --port there, not read
+# from any env var this script sets). Read it from there instead of
+# hardcoding it a second time, so a port change in the plist can't silently
+# desync this script's health check. Prefers the installed plist (what's
+# actually loaded); falls back to the repo's source plist if not installed
+# yet, then to 8767 if neither is parseable.
+_service_port() {
+  local plist="$PLIST_DEST"
+  [[ -f "$plist" ]] || plist="$PLIST_SRC"
+  local port=""
+  if [[ -f "$plist" ]]; then
+    port="$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments" "$plist" 2>/dev/null \
+      | sed 's/^[[:space:]]*//' | awk '/^--port$/{getline; print; exit}')"
+  fi
+  echo "${port:-8767}"
+}
+
 cmd="${1:-status}"
 
 case "$cmd" in
   install)
-    if [[ ! -f "$PLIST_SRC" ]]; then
-      echo "missing: $PLIST_SRC" >&2; exit 1
-    fi
-    mkdir -p "$HOME/Library/LaunchAgents"
-    cp "$PLIST_SRC" "$PLIST_DEST"
-    launchctl unload "$PLIST_DEST" 2>/dev/null || true
-    launchctl load -w "$PLIST_DEST"
-    echo "installed and loaded: $LABEL"
-    launchctl list | grep "$LABEL" || true
+    _install_agent "$LABEL" "$PLIST_SRC" "$PLIST_DEST"
     ;;
 
   uninstall)
-    launchctl unload "$PLIST_DEST" 2>/dev/null || true
-    rm -f "$PLIST_DEST"
-    echo "uninstalled: $LABEL"
+    _uninstall_agent "$LABEL" "$PLIST_DEST"
     ;;
 
   install-rocco-sync)
@@ -91,6 +99,7 @@ case "$cmd" in
     ;;
 
   status)
+    port="$(_service_port)"
     echo "label:    $LABEL"
     echo "plist:    $PLIST_DEST"
     if launchctl list | grep -q "$LABEL"; then
@@ -99,10 +108,10 @@ case "$cmd" in
     else
       echo "loaded:   no"
     fi
-    if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8767/" 2>/dev/null | grep -q 200; then
-      echo "health:   UI responding on http://127.0.0.1:8767"
+    if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/" 2>/dev/null | grep -q 200; then
+      echo "health:   UI responding on http://127.0.0.1:${port}"
     else
-      echo "health:   UI NOT responding on 8767"
+      echo "health:   UI NOT responding on ${port}"
     fi
     echo
     echo "rocco-sync agent: $ROCCO_LABEL"

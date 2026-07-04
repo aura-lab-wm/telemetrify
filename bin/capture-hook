@@ -8,4 +8,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # instead of the (possibly-closed) hook fd.
 export TQDM_DISABLE=1 HF_HUB_DISABLE_PROGRESS_BARS=1 \
        TRANSFORMERS_VERBOSITY=error TOKENIZERS_PARALLELISM=false
+# Defensive: if data/ is ever missing, the append-redirect below fails to set
+# up and every single hook invocation silently no-ops (no capture, no visible
+# error). Recreate it owner-only (matches the FIX 1 permission tightening --
+# this dir holds the full local capture history of every session) rather than
+# falling back to the umask default.
+mkdir -p -m 700 "$ROOT/data" 2>/dev/null || true
 exec "$ROOT/.venv/bin/python" -m telemetrify.capture 2>>"$ROOT/data/capture.log"

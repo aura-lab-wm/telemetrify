@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -16,9 +17,27 @@ from . import prompts as P, schemas as S
 from .client import AnthropicClient, BudgetExceeded
 from ..db import connect
 
+# Claude Code's paste convention for an image with no accompanying caption
+# leaves user_text as one of these placeholder forms, e.g.:
+#   "[Image: original 3024x80, displayed at 2000x53. Multiply coordinates by
+#    1.51 to map to original image.]"
+#   "[Image #2]"
+# Neither is real user-authored text, so it must never be fed to the labeler
+# nor allowed to become an auto_label verbatim.
+_IMAGE_PLACEHOLDER_RE = re.compile(
+    r"^\[Image(?::\s*original\s+\d+x\d+.*?|\s*#\d+)\]$",
+    re.IGNORECASE,
+)
 
-def _members_for_cluster(conn: sqlite3.Connection, cluster_id: int, k: int = 5) -> list[str]:
-    rows = conn.execute(
+FALLBACK_IMAGE_ONLY_LABEL = "(image-only prompts)"
+
+
+def _is_image_placeholder(line: str) -> bool:
+    return bool(_IMAGE_PLACEHOLDER_RE.match(line.strip()))
+
+
+def _representative_rows(conn: sqlite3.Connection, cluster_id: int, k: int) -> list[sqlite3.Row]:
+    return conn.execute(
         """
         SELECT t.user_text
         FROM turn_cluster tc JOIN turns t ON t.id = tc.turn_id
@@ -28,18 +47,62 @@ def _members_for_cluster(conn: sqlite3.Connection, cluster_id: int, k: int = 5) 
         """,
         (cluster_id, k),
     ).fetchall()
+
+
+def _members_for_cluster(conn: sqlite3.Connection, cluster_id: int, k: int = 5) -> list[str]:
+    rows = _representative_rows(conn, cluster_id, k)
     out = []
     for r in rows:
-        s = (r["user_text"] or "").strip().splitlines()[0][:280]
-        if s:
-            out.append(s)
+        # Walk the turn's lines looking for the first one that isn't just an
+        # image-paste placeholder (resize-hint or bare "[Image #N]" form).
+        # This lets a real caption below/above an image marker still surface.
+        for line in (r["user_text"] or "").strip().splitlines():
+            line = line.strip()
+            if not line or _is_image_placeholder(line):
+                continue
+            out.append(line[:280])
+            break
     return out
+
+
+def _cluster_has_only_image_placeholders(conn: sqlite3.Connection, cluster_id: int, k: int = 5) -> bool:
+    """True when the cluster has representative members, but every one of
+    them is nothing but image-paste placeholder text -- a real all-screenshot
+    cluster with no usable caption anywhere. Distinguishes that case from a
+    cluster with no representative rows at all (which _members_for_cluster
+    also reports as empty, but which should stay unlabeled, not fall back)."""
+    rows = _representative_rows(conn, cluster_id, k)
+    if not rows:
+        return False
+    for r in rows:
+        for line in (r["user_text"] or "").strip().splitlines():
+            line = line.strip()
+            if line and not _is_image_placeholder(line):
+                return False
+    return True
 
 
 def label_cluster(conn: sqlite3.Connection, cluster_id: int, *,
                   override_budget_usd: float | None = None) -> dict | None:
     members = _members_for_cluster(conn, cluster_id, k=5)
     if len(members) < 1:
+        if _cluster_has_only_image_placeholders(conn, cluster_id, k=5):
+            # A real all-screenshot cluster: don't call the LLM with nothing
+            # but placeholder text, and don't leave raw metadata behind --
+            # stamp an honest, clearly-labeled fallback instead.
+            now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            with conn:
+                conn.execute(
+                    """
+                    UPDATE prompt_clusters
+                    SET auto_label = ?, auto_label_at = ?, auto_label_model = ?, auto_label_version = ?
+                    WHERE id = ?
+                    """,
+                    (FALLBACK_IMAGE_ONLY_LABEL, now, "rule:image-only-fallback",
+                     "image-only-fallback-v1", cluster_id),
+                )
+            return {"cluster_id": cluster_id, "label": FALLBACK_IMAGE_ONLY_LABEL,
+                    "model": "rule:image-only-fallback", "cost_usd": 0.0}
         return None
     # pad to 5 entries for the template
     while len(members) < 5:

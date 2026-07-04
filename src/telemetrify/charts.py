@@ -84,6 +84,40 @@ _LEDGER_BASE = {
 }
 
 
+def _deep_merge(base: Any, override: Any) -> Any:
+    """Recursively merge `override` on top of `base` without mutating either.
+
+    A plain top-level merge (`{**base, **override}`) is only safe one level
+    deep: if `override` supplies a nested dict for a key that `base` also
+    defines as a nested dict (e.g. `xaxis` or `yaxis`), that single-level
+    merge REPLACES the whole nested value, silently discarding any sibling
+    keys `base` set inside it. Concretely: `_LEDGER_AXIS["title"]` carries a
+    custom font plus `standoff: 14` (kept specifically so the axis title
+    clears the legend strip below it); a chart calling
+    `xaxis={"title": "day"}` would wipe that dict out entirely, leaving a
+    bare string with no font/standoff. Recurse into shared dict keys
+    instead, so an override only overrides the specific keys it sets.
+
+    Plotly also lets several nested "title"-shaped keys (figure title, axis
+    title, ...) be given either as a full object (`{"text", "font", ...}`)
+    or as a bare string shorthand for just the text. When `base` is a dict
+    but `override` is a bare scalar, treat it as that shorthand --
+    `{"text": override}` merged into `base` -- instead of replacing the
+    whole dict and losing its font/standoff.
+
+    Anything else (override is a list, or base isn't a dict) -- override
+    wins outright; there's no structural way to merge those.
+    """
+    if isinstance(base, dict) and isinstance(override, dict):
+        merged = dict(base)
+        for key, value in override.items():
+            merged[key] = _deep_merge(merged[key], value) if key in merged else value
+        return merged
+    if isinstance(base, dict) and isinstance(override, (str, int, float, bool)):
+        return _deep_merge(base, {"text": override})
+    return override
+
+
 def _layout(title: str, exhibit: str | None = None, **extra: Any) -> dict:
     """Build a Ledger-themed Plotly layout.
 
@@ -103,9 +137,12 @@ def _layout(title: str, exhibit: str | None = None, **extra: Any) -> dict:
     }
     for axis_key in ("xaxis", "yaxis"):
         if axis_key in extra:
-            merged = {**_LEDGER_AXIS, **extra.pop(axis_key)}
-            layout[axis_key] = merged
-    layout.update(extra)
+            layout[axis_key] = _deep_merge(_LEDGER_AXIS, extra.pop(axis_key))
+    # Deep-merge any remaining nested-dict overrides (e.g. a chart passing
+    # its own already-fully-built `margin`) against whatever's already in
+    # the layout; brand-new keys (e.g. `yaxis2`, `barmode`) are just set.
+    for key, value in extra.items():
+        layout[key] = _deep_merge(layout[key], value) if key in layout else value
     return layout
 
 
@@ -125,6 +162,40 @@ def _shorten_tool_name(name: str, keep: int = 30) -> str:
     if not name or len(name) <= keep:
         return name
     return "…" + name[-keep:]
+
+
+def _shorten_tool_names(names: list[str], keep: int = 30) -> list[str]:
+    """Shorten a chart's actual set of tool names, guaranteeing distinct
+    names never collapse onto an identical displayed label.
+
+    `_shorten_tool_name`'s fixed "keep the last `keep` characters" rule is
+    correct for a single name in isolation, but applied uniformly across a
+    whole tool-name set it can map two DIFFERENT tool names to the SAME
+    label whenever their tails happen to match past `keep` characters --
+    e.g. "mcp__chrome-devtools__take_screenshot" and
+    "mcp__playwright__browser_take_screenshot" both end in
+    "...take_screenshot". Detect that collision within `names` (the tool
+    set actually being rendered on this chart) and lengthen the kept
+    suffix only for the colliding entries -- just enough that every
+    distinct name in the collision group renders as a distinct label --
+    rather than growing the truncation length for every tool on the axis.
+    """
+    labels = [_shorten_tool_name(n, keep) for n in names]
+
+    groups: dict[str, list[int]] = defaultdict(list)
+    for i, label in enumerate(labels):
+        groups[label].append(i)
+
+    for label, idxs in groups.items():
+        if len(idxs) <= 1:
+            continue  # unique already -- nothing to disambiguate
+        colliding = [names[i] for i in idxs]
+        k = keep
+        while len({_shorten_tool_name(n, k) for n in colliding}) < len(colliding):
+            k += 8
+        for i in idxs:
+            labels[i] = _shorten_tool_name(names[i], k)
+    return labels
 
 
 def turns_per_day(conn: sqlite3.Connection) -> dict:
@@ -260,11 +331,13 @@ def tool_heatmap(conn: sqlite3.Connection) -> dict:
         cell[(r["tool"], r["wk"])] = r["n"]
 
     z = [[cell.get((tool, wk), 0) for wk in weeks] for tool in tools]
-    # Display labels are shortened (see _shorten_tool_name) so the y-axis
+    # Display labels are shortened (see _shorten_tool_names) so the y-axis
     # never silently clips a long "mcp__servername__toolname" from the
     # left with no ellipsis — grouping above is still keyed on the full,
     # untruncated tool name, only the label shown on the axis is shortened.
-    tool_labels = [_shorten_tool_name(t) for t in tools]
+    # _shorten_tool_names (plural) additionally guarantees that two
+    # distinct tool names in `tools` never shorten to the same label.
+    tool_labels = _shorten_tool_names(tools)
     # Custom warm colorscale: lamplit ink → phosphor amber → bright cream
     ledger_scale = [
         [0.00, "#0a0a0a"],

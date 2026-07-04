@@ -98,13 +98,9 @@ def test_complete_disables_capture_hook_in_subprocess_env(monkeypatch):
 
 
 def test_argv_isolates_from_user_config(monkeypatch):
-    """The spawned session must NOT load the user's global hooks / skills /
-    CLAUDE.md / MCP servers. Those are unbounded work (some MCP servers need
-    interactive OAuth that can never complete headlessly) and pushed a real
-    call over its 120s timeout (2026-07-04 /ask hang). --safe-mode strips all
-    of that while keeping normal keychain OAuth auth; --tools "" removes the
-    builtin-tool surface so the single-turn call can't get stuck on a
-    permission prompt with no TTY to answer it."""
+    """--safe-mode / --tools "" isolate the call from the user's global
+    ~/.claude config; see the claude_cli module docstring for the full
+    rationale (2026-07-04 hang incident)."""
     from telemetrify.ai.backends.claude_cli import ClaudeCLIBackend
 
     cap: dict = {}

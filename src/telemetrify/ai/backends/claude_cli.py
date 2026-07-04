@@ -132,17 +132,8 @@ class ClaudeCLIBackend:
             "--model", eff_model,
             "--max-turns", "1",
             "--append-system-prompt", system,
-            # Isolate from the user's global ~/.claude config. Without this the
-            # spawned session loads every installed hook, skill, CLAUDE.md, and
-            # MCP server (several require interactive OAuth that can never
-            # complete headlessly) before it ever gets to the prompt — unbounded
-            # setup work that can eat the whole subprocess timeout (2026-07-04:
-            # an /ask planner call died at exactly 120.0s to this, not slow
-            # inference). --safe-mode strips hooks/skills/CLAUDE.md/MCP servers
-            # while keeping normal keychain OAuth auth (unlike --bare, which
-            # forces ANTHROPIC_API_KEY-only auth); --tools "" removes the
-            # builtin-tool surface so a single-turn call can't get stuck on a
-            # permission prompt with no TTY to answer it.
+            # Isolate from the user's global ~/.claude config — see the module
+            # docstring above for the full rationale (2026-07-04 hang incident).
             "--safe-mode",
             "--tools", "",
         ]

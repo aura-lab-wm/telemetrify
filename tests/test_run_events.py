@@ -328,6 +328,97 @@ def test_manual_tag_via_cli(turn_with_bash, monkeypatch):
     assert all(s == "manual" for s in srcs)
 
 
+def test_manual_tag_targets_only_specified_tool_use_id(turn_with_bash):
+    """Regression: manual_tag(entity=<tool_use_id>) must stamp ONLY the one
+    run_event that tool_use_id names — not every Bash run_event in the
+    turn. Before the fix, the lookup matched
+    `tool_name IN (SELECT tool_name FROM tool_calls WHERE tool_use_id = ?)`,
+    which only recovers the tool NAME ("Bash") with no predicate left on
+    the actual tool_use_id — so any turn with 2+ Bash calls got every Bash
+    run_event silently re-tagged instead of just the one requested."""
+    conn, turn_id, session_id = turn_with_bash
+    derive_for_turn(conn, turn_id, session_id, project="foo", source="capture",
+                    tool_calls=None)
+    before = {
+        r["id"]: r["outcome_tag"] for r in conn.execute(
+            "SELECT id, outcome_tag FROM run_events WHERE turn_id = ? ORDER BY id",
+            (turn_id,),
+        ).fetchall()
+    }
+    assert len(before) == 2  # tu_ok + tu_fail Bash run_events
+
+    n = manual_tag(conn, turn_id, "manual_pass", entity="tu_fail")
+    assert n == 1
+
+    rows = {
+        r["id"]: (r["outcome_tag"], r["source"]) for r in conn.execute(
+            "SELECT id, outcome_tag, source FROM run_events WHERE turn_id = ? ORDER BY id",
+            (turn_id,),
+        ).fetchall()
+    }
+    # tool_calls seq order == run_events id (insertion) order — find which
+    # run_event belongs to tu_fail via that established correlation.
+    tc_ids = [r["tool_use_id"] for r in conn.execute(
+        "SELECT tool_use_id FROM tool_calls WHERE turn_id = ? AND tool_name = 'Bash' "
+        "ORDER BY seq ASC", (turn_id,),
+    ).fetchall()]
+    fail_idx = tc_ids.index("tu_fail")
+    fail_event_id = list(before.keys())[fail_idx]
+    other_event_ids = [eid for eid in before if eid != fail_event_id]
+    assert other_event_ids  # sanity: there IS a sibling row to check
+
+    assert rows[fail_event_id] == ("manual_pass", "manual")
+    for eid in other_event_ids:
+        # Untouched: still whatever derive_for_turn's auto-output-match left
+        # it as (not clobbered by the manual_tag call for a different id).
+        assert rows[eid][0] == before[eid]
+        assert rows[eid][1] != "manual"
+
+
+def test_manual_tag_tool_use_id_disambiguates_same_started_at(migrated_db):
+    """Two Bash calls emitted within the same assistant message share an
+    identical started_at (transcript.py stamps started_at from the
+    assistant record's timestamp, not a per-tool_use one) — manual_tag must
+    still land on exactly the requested tool_use_id's run_event, proving
+    the fix doesn't just get lucky on distinct timestamps."""
+    conn = migrated_db
+    conn.execute(
+        "INSERT INTO sessions(id, started_at, cwd) VALUES (?, ?, ?)",
+        ("sess-2", "2026-07-01T00:00:00Z", "/proj"),
+    )
+    cur = conn.execute(
+        "INSERT INTO turns(session_id, user_text, assistant_text, started_at, cwd) "
+        "VALUES (?, 'run two things', 'done', ?, ?)",
+        ("sess-2", "2026-07-01T00:01:00Z", "/proj"),
+    )
+    turn_id = cur.lastrowid
+    same_ts = "2026-07-01T00:01:01Z"
+    conn.execute(
+        "INSERT INTO tool_calls(turn_id, seq, tool_name, tool_use_id, input_json, output_text, is_error, started_at) "
+        "VALUES (?, 1, 'Bash', 'tu_a', ?, 'ok', 0, ?)",
+        (turn_id, json.dumps({"command": "echo a"}), same_ts),
+    )
+    conn.execute(
+        "INSERT INTO tool_calls(turn_id, seq, tool_name, tool_use_id, input_json, output_text, is_error, started_at) "
+        "VALUES (?, 2, 'Bash', 'tu_b', ?, 'ok', 0, ?)",
+        (turn_id, json.dumps({"command": "echo b"}), same_ts),
+    )
+    conn.commit()
+    derive_for_turn(conn, turn_id, "sess-2", project="proj", source="capture",
+                    tool_calls=None)
+
+    n = manual_tag(conn, turn_id, "manual_pass", entity="tu_b")
+    assert n == 1
+    event_ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM run_events WHERE turn_id = ? ORDER BY id", (turn_id,)
+    ).fetchall()]
+    tagged_ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM run_events WHERE turn_id = ? AND outcome_tag = 'manual_pass'",
+        (turn_id,),
+    ).fetchall()]
+    assert tagged_ids == [event_ids[1]]  # the SECOND run_event (tu_b, seq=2) only
+
+
 def test_auto_restamp_from_output(turn_with_bash):
     conn, turn_id, _ = turn_with_bash
     # First seed with no outcome by tagging manually then re-deriving auto.

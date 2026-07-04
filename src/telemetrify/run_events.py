@@ -101,7 +101,7 @@ def derive_for_turn(
     *,
     project: str | None,
     source: str,
-    tool_calls: Iterable | (),
+    tool_calls: Iterable | None,
     commit: bool = True,
 ) -> int:
     """Insert run_events rows for the turn's actor tool_calls and stamp
@@ -240,14 +240,55 @@ def manual_tag(
                 )
                 if cur.rowcount:
                     return cur.rowcount
+            # Resolve tool_use_id -> the ONE run_event it produced.
+            #
+            # run_events has no tool_use_id column (schema gap). The prior
+            # query worked around that with
+            #   WHERE turn_id = ? AND tool_name IN (
+            #       SELECT tool_name FROM tool_calls WHERE tool_use_id = ?)
+            # — but that subquery only recovers the TOOL NAME ("Bash"), not
+            # which specific call, so the outer UPDATE matched (and
+            # silently re-tagged) every Bash run_event in the turn whenever
+            # the turn had 2+ Bash calls. There was no predicate on the
+            # requested tool_use_id at all past that point.
+            #
+            # run_events rows are always produced 1:1, in the same relative
+            # order, from a turn's actor tool_calls (RUN_TOOL_NAMES) — both
+            # the capture-time path (iterates the passed-in tool_calls list,
+            # already in seq order) and the backfill path
+            # (_load_tool_results, `ORDER BY seq ASC`) preserve that
+            # ordering, and each INSERT gets the next autoincrement id. So
+            # the Nth actor tool_call (by seq) among the turn's tool_calls
+            # corresponds exactly to the Nth run_event (by id) for the turn
+            # — a reliable positional join given the schema as it stands,
+            # and one that (unlike matching on started_at) still
+            # disambiguates two Bash calls issued within the same assistant
+            # message, which share an identical started_at.
+            placeholders = _in_placeholders(RUN_TOOL_NAMES)
+            actor_tool_use_ids = [
+                r["tool_use_id"] for r in conn.execute(
+                    f"""
+                    SELECT tool_use_id FROM tool_calls
+                    WHERE turn_id = ? AND tool_name IN ({placeholders})
+                    ORDER BY seq ASC
+                    """,
+                    (turn_id, *RUN_TOOL_NAMES),
+                ).fetchall()
+            ]
+            if entity not in actor_tool_use_ids:
+                return 0
+            idx = actor_tool_use_ids.index(entity)
+            event_ids = [
+                r["id"] for r in conn.execute(
+                    "SELECT id FROM run_events WHERE turn_id = ? ORDER BY id ASC",
+                    (turn_id,),
+                ).fetchall()
+            ]
+            if idx >= len(event_ids):
+                return 0
             cur = conn.execute(
-                """
-                UPDATE run_events SET outcome_tag = ?, source = 'manual'
-                WHERE turn_id = ? AND tool_name IN (
-                    SELECT tool_name FROM tool_calls WHERE tool_use_id = ?
-                )
-                """,
-                (outcome, turn_id, entity),
+                "UPDATE run_events SET outcome_tag = ?, source = 'manual' WHERE id = ?",
+                (outcome, event_ids[idx]),
             )
             return cur.rowcount
         cur = conn.execute(

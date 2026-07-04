@@ -61,17 +61,34 @@ def _extract_command(tool_name: str, input_json: str | None) -> str | None:
     return None
 
 
+def _in_placeholders(items) -> str:
+    """Return a comma-joined "?,?,..." placeholder string sized to len(items)
+    for use inside a SQL `IN (...)` clause, or the two-char empty-string SQL
+    literal `''` (matches no real value) when items is empty.
+
+    Built via plain string concatenation and deliberately NEVER passed through
+    old-style `%`-interpolation: a query string assembled this way can already
+    contain literal percent signs (e.g. strftime's `%Y`/`%W`, or a LIKE
+    pattern's `%`), and running old-style percent-formatting on top of that
+    collides with those literal escapes and raises
+    `ValueError: unsupported format character '...'`. Always inline the
+    result directly into an f-string instead.
+    """
+    return ",".join("?" * len(items)) if items else "''"
+
+
 def _load_tool_results(conn: sqlite3.Connection, turn_id: int) -> dict[int, dict]:
     """Map tool_call.id → {tool_name, tool_use_id, input_json, output_text,
     started_at, is_error} for the turn's actor tool_calls."""
+    placeholders = _in_placeholders(RUN_TOOL_NAMES)
     rows = conn.execute(
-        """
+        f"""
         SELECT id, tool_name, tool_use_id, input_json, output_text,
                started_at, is_error
         FROM tool_calls
-        WHERE turn_id = ? AND tool_name IN (%s)
+        WHERE turn_id = ? AND tool_name IN ({placeholders})
         ORDER BY seq ASC
-        """ % ",".join("?" * len(RUN_TOOL_NAMES)),
+        """,
         (turn_id, *RUN_TOOL_NAMES),
     ).fetchall()
     return {r["id"]: dict(r) for r in rows}
@@ -244,14 +261,15 @@ def backfill_all(conn: sqlite3.Connection, *, log=print) -> dict:
     """Populate run_events for every existing turn that has actor tool_calls
     but no run_events rows yet. Idempotent (derive_for_turn deletes-then-
     inserts per turn). Returns a summary dict."""
+    placeholders = _in_placeholders(RUN_TOOL_NAMES)
     rows = conn.execute(
-        """
+        f"""
         SELECT DISTINCT t.id AS turn_id, t.session_id, t.cwd
         FROM turns t
         JOIN tool_calls tc ON tc.turn_id = t.id
-        WHERE tc.tool_name IN (%s)
+        WHERE tc.tool_name IN ({placeholders})
         ORDER BY t.id ASC
-        """ % ",".join("?" * len(RUN_TOOL_NAMES)),
+        """,
         tuple(RUN_TOOL_NAMES),
     ).fetchall()
 
@@ -347,8 +365,8 @@ def outcome_trend(conn: sqlite3.Connection, *, bucket: str = "week") -> list[dic
     # spec — doing `"""...""" % {...}` on top of that collided with the
     # literal percent-escapes and raised
     # `ValueError: unsupported format character 'Y'`.
-    succ_placeholders = ",".join("?" * len(success_tags)) or "''"
-    fail_placeholders = ",".join("?" * len(failure_tags)) or "''"
+    succ_placeholders = _in_placeholders(success_tags)
+    fail_placeholders = _in_placeholders(failure_tags)
     rows = conn.execute(
         f"""
         SELECT strftime('{fmt}', re.started_at) AS b,
@@ -363,7 +381,7 @@ def outcome_trend(conn: sqlite3.Connection, *, bucket: str = "week") -> list[dic
         ORDER BY b
         """,
         (*success_tags, *failure_tags),
-    ).fetchall() if (success_tags and failure_tags) else []
+    ).fetchall() if (success_tags or failure_tags) else []
     # Fallback when the rule set has no success or failure tags (shouldn't
     # happen with the shipped defaults, but don't crash on an empty config).
     if not rows:

@@ -19,6 +19,7 @@ from telemetrify.run_events import (
     command_success_rate,
     derive_for_turn,
     manual_tag,
+    outcome_trend,
     stamp_outcomes_for_turn,
 )
 
@@ -205,6 +206,32 @@ def test_command_success_rate_reports_resolution_and_bounds(turn_with_bash):
     assert r["resolution_rate"] is not None and 0.0 <= r["resolution_rate"] <= 1.0
     # bounds bracket the conditional rate
     assert r["bounds"]["worst"] <= r["rate"] <= r["bounds"]["best"]
+
+
+def test_outcome_trend_categorizes_when_only_success_tags_configured(turn_with_bash, monkeypatch):
+    """Regression: a rule set with success tags but NO failure tags (or vice
+    versa) must still run the categorized query instead of silently falling
+    back to the raw-tag query, whose output the aggregation loop drops for
+    any tag other than 'success'/'failure'/'__unresolved__' (previously this
+    made the chart report zero success/failure activity for a project that
+    actually had some)."""
+    conn, turn_id, _ = turn_with_bash
+    # Only success rules configured — no failure tags at all.
+    monkeypatch.setattr(outcome_rules, "load", lambda: {
+        "projects": {
+            "__default__": {
+                "outcome_rules": [
+                    {"tag": "tests_passed", "outcome": "success", "pattern": r"passed"},
+                ],
+            },
+        },
+    })
+    derive_for_turn(conn, turn_id, "sess-1", project="foo", source="capture",
+                    tool_calls=None)
+    trend = outcome_trend(conn)
+    assert trend  # must not be the empty-list fallback
+    assert sum(b["success"] for b in trend) >= 1
+    assert sum(b["failure"] for b in trend) == 0
 
 
 # ─── #2 evidence-backing grade ───────────────────────────────────────────

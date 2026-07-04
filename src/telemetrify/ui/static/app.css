@@ -526,6 +526,13 @@ body.v-page {
   --vgreen:        #ff9233;   /* "good" — kept as a variable name but it's amber-orange. No green in this UI. */
   --vred:          #ef4444;
 
+  /* shared orange-tint "featured" treatment — referenced by both
+     .digest-banner and .plate-group.featured so the two can never
+     silently drift apart again. */
+  --vtint-border:  rgba(255, 92, 0, 0.25);
+  --vtint-grad-1:  rgba(255, 92, 0, 0.06);
+  --vtint-grad-2:  rgba(255, 92, 0, 0.01);
+
   --vfont-sans:    "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   --vfont-mono:    "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
 
@@ -1335,8 +1342,8 @@ body.v-page .fold-value {
 
 /* digest banner */
 body.v-page .digest-banner {
-  background: linear-gradient(180deg, rgba(255,92,0,0.06), rgba(255,92,0,0.01));
-  border: 1px solid rgba(255,92,0,0.25);
+  background: linear-gradient(180deg, var(--vtint-grad-1), var(--vtint-grad-2));
+  border: 1px solid var(--vtint-border);
   border-radius: var(--r-3); padding: 16px 20px;
   margin-bottom: var(--s-6); position: relative;
 }
@@ -1376,15 +1383,18 @@ body.v-page .plate-group-id {
   color: var(--phosphor); font-weight: 500;
   text-transform: uppercase; letter-spacing: 0.12em;
 }
-/* small pill flagging the highest-priority group ("core signal") */
-body.v-page .plate-group-flag {
+/* pill flagging the highest-priority group ("core signal") — built on the
+   existing .pill / .pill-orange primitives (padding, border-radius, and the
+   orange tint already come from those); only right-alignment and the
+   smaller uppercase label size are specific to this usage. The extra
+   ".pill" in the selector bumps specificity above the later
+   `.badge, .anno-badge, .pill { font-size: 11px }` rule so this override
+   actually sticks. */
+body.v-page .pill.plate-group-flag {
   margin-left: auto;
-  font-family: var(--font-mono); font-size: 10px;
-  text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--phosphor);
-  border: 1px solid rgba(255,92,0,0.35);
-  background: rgba(255,92,0,0.08);
-  border-radius: 99px; padding: 3px 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 /* one-line kicker explaining what each group measures — this is the
    "improved visual hierarchy" ask: a reader should know what a section is
@@ -1397,16 +1407,23 @@ body.v-page .plate-group-desc {
 
 /* the "featured" wrapper singles out the Trust & evidence group — a subtle
    orange-tinted frame so the operator's eye lands there first, matching
-   the digest-banner treatment used elsewhere on this page. */
+   the digest-banner treatment used elsewhere on this page (same
+   --vtint-* custom properties, so the two can't drift apart again). */
 body.v-page .plate-group.featured {
   padding: 20px 22px 22px;
-  border: 1px solid rgba(255,92,0,0.22);
+  border: 1px solid var(--vtint-border);
   border-radius: var(--r-3);
-  background: linear-gradient(180deg, rgba(255,92,0,0.045), rgba(255,92,0,0.005));
+  background: linear-gradient(180deg, var(--vtint-grad-1), var(--vtint-grad-2));
 }
 body.v-page .plate-group.featured .plate-group-title { border-bottom-color: rgba(255,92,0,0.22); }
 body.v-page .plate-group.featured .plate {
   border-color: rgba(255,92,0,0.16);
+}
+/* the plain .plate:hover rule (1 class + 1 pseudo-class) is lower specificity
+   than the rule above (3 classes), so without this override hover feedback
+   would be dead on every chart inside the featured group. */
+body.v-page .plate-group.featured .plate:hover {
+  border-color: var(--rule-strong);
 }
 body.v-page .plate-group.featured .plate::before { width: 48px; opacity: 1; }
 
@@ -1425,8 +1442,10 @@ body.v-page .plates.one-up { grid-template-columns: 1fr; margin-top: var(--s-3);
   body.v-page .plates.wide-then-two,
   body.v-page .plates.four-up { grid-template-columns: 1fr; }
 }
-/* Mid-width laptop: four-up breathes as a 2×2 grid before collapsing fully */
-@media (min-width: 901px) and (max-width: 1399px) {
+/* Mid-width laptop: four-up breathes as a 2×2 grid before collapsing fully.
+   Upper bound aligned to the existing 1280px breakpoint below (was a
+   one-off 1399px band) so the file only has two breakpoint values: 900/1280. */
+@media (min-width: 901px) and (max-width: 1279px) {
   body.v-page .plates.four-up { grid-template-columns: 1fr 1fr; }
 }
 /* 14" laptop sweet spot (≥1280px): plates breathe a bit more */

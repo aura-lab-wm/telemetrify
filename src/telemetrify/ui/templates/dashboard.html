@@ -34,61 +34,80 @@
     </div>
   </section>
 
-  <!-- ── Plates ─────────────────────────────────────────────────── -->
-  <section class="plate-group">
+  <!-- ── Plates ─────────────────────────────────────────────────────
+       Reorganized (was: Volume / Quality & correction / Outcomes &
+       evidence / Reliability / Cost & cache — 5 loosely-ordered groups
+       with no clear read order). New structure reads top-to-bottom in
+       priority order for a "check this often" personal dashboard:
+
+       i.   Trust & evidence — the reason this tool exists: is Claude's
+            self-reported success actually backed by tool output? Surfaced
+            first and visually flagged, not buried after volume charts.
+       ii.  Reliability & performance — does it run cleanly and fast.
+       iii. Prompt clusters — the two cluster-ranked bar charts, grouped
+            together because they share an axis (same 10 clusters) and
+            were previously split across two unrelated sections.
+       iv.  Activity, correction & cost — the remaining volume/trend/cost
+            charts, lower priority for a daily glance but still tracked.
+  ────────────────────────────────────────────────────────────────── -->
+
+  <section class="plate-group featured">
     <h3 class="plate-group-title">
       <span class="plate-group-id">i.</span>
-      <em>Volume</em>
+      <em>Trust &amp; evidence</em>
+      <span class="plate-group-flag">core signal</span>
     </h3>
+    <p class="plate-group-desc">
+      Of the turns that claimed success, how many had no tool output to back
+      it up — and of the commands Claude ran, how many actually resolved to
+      success or failure. This is the metric the whole ledger exists to
+      surface.
+    </p>
     <div class="plates two-up">
-      <div class="plate"><div id="chart-turns-per-day" class="chart"></div></div>
-      <div class="plate"><div id="chart-tokens-by-model" class="chart"></div></div>
+      <div class="plate"><div id="chart-unsupported-claim-rate" class="chart"></div></div>
+      <div class="plate"><div id="chart-command-outcome-rate" class="chart"></div></div>
     </div>
   </section>
 
   <section class="plate-group">
     <h3 class="plate-group-title">
       <span class="plate-group-id">ii.</span>
-      <em>Quality &amp; correction</em>
+      <em>Reliability &amp; performance</em>
     </h3>
+    <p class="plate-group-desc">Which tools get used, how often they error, and how fast turns resolve.</p>
     <div class="plates wide-then-two">
-      <div class="plate wide"><div id="chart-cluster-correction-breakdown" class="chart chart-tall"></div></div>
-      <div class="plate"><div id="chart-correction-rate" class="chart"></div></div>
-      <div class="plate"><div id="chart-annotations" class="chart"></div></div>
-    </div>
-  </section>
-
-  <section class="plate-group">
-    <h3 class="plate-group-title">
-      <span class="plate-group-id">ii.b.</span>
-      <em>Outcomes &amp; evidence</em>
-    </h3>
-    <div class="plates two-up">
-      <div class="plate"><div id="chart-command-outcome-rate" class="chart"></div></div>
-      <div class="plate"><div id="chart-unsupported-claim-rate" class="chart"></div></div>
+      <div class="plate wide"><div id="chart-tool-heatmap" class="chart chart-tall"></div></div>
+      <div class="plate"><div id="chart-error-rate" class="chart"></div></div>
+      <div class="plate"><div id="chart-latency" class="chart"></div></div>
     </div>
   </section>
 
   <section class="plate-group">
     <h3 class="plate-group-title">
       <span class="plate-group-id">iii.</span>
-      <em>Reliability</em>
+      <em>Prompt clusters</em>
     </h3>
-    <div class="plates wide-then-two">
-      <div class="plate wide"><div id="chart-tool-heatmap" class="chart"></div></div>
-      <div class="plate"><div id="chart-latency" class="chart"></div></div>
-      <div class="plate"><div id="chart-error-rate" class="chart"></div></div>
+    <p class="plate-group-desc">The same top-10 clusters, ranked by size and by how often they needed a correction.</p>
+    <div class="plates two-up">
+      <div class="plate"><div id="chart-top-clusters" class="chart chart-tall"></div></div>
+      <div class="plate"><div id="chart-cluster-correction-breakdown" class="chart chart-tall"></div></div>
     </div>
   </section>
 
   <section class="plate-group">
     <h3 class="plate-group-title">
       <span class="plate-group-id">iv.</span>
-      <em>Cost &amp; cache</em>
+      <em>Activity, correction &amp; cost</em>
     </h3>
-    <div class="plates two-up">
-      <div class="plate wide"><div id="chart-cache-efficiency" class="chart"></div></div>
-      <div class="plate"><div id="chart-top-clusters" class="chart chart-tall"></div></div>
+    <p class="plate-group-desc">Volume over time, how often turns get followed up on, and prompt-cache efficiency.</p>
+    <div class="plates four-up">
+      <div class="plate"><div id="chart-turns-per-day" class="chart"></div></div>
+      <div class="plate"><div id="chart-tokens-by-model" class="chart"></div></div>
+      <div class="plate"><div id="chart-correction-rate" class="chart"></div></div>
+      <div class="plate"><div id="chart-annotations" class="chart"></div></div>
+    </div>
+    <div class="plates one-up">
+      <div class="plate"><div id="chart-cache-efficiency" class="chart"></div></div>
     </div>
   </section>
 

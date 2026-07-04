@@ -1,22 +1,32 @@
 // The Telemetry Ledger — dashboard wiring.
 // Populates the masthead/narrative-fold from /api/dashboard/headline, then
-// renders ten Plotly figures from /api/charts/<name>. The server already
+// renders twelve Plotly figures from /api/charts/<name>. The server already
 // returns Ledger-themed layouts (paper/plot bg, font, colorway, grid),
 // so this file does not override visual layout — it only newPlot's.
+//
+// Ordered to match the on-page group order (see dashboard.html):
+//   i.   Trust & evidence      — unsupported_claim_rate, command_outcome_rate
+//   ii.  Reliability           — tool_heatmap, error_rate, latency
+//   iii. Prompt clusters       — top_clusters, cluster_correction_breakdown
+//   iv.  Activity/correction/cost — turns_per_day, tokens_by_model,
+//        correction_rate, annotations, cache_efficiency
 
 const CHARTS = [
-  ["turns_per_day",                "chart-turns-per-day"],
-  ["tokens_by_model",              "chart-tokens-by-model"],
+  ["unsupported_claim_rate",       "chart-unsupported-claim-rate"],
+  ["command_outcome_rate",         "chart-command-outcome-rate"],
+
   ["tool_heatmap",                 "chart-tool-heatmap"],
   ["error_rate",                   "chart-error-rate"],
   ["latency",                      "chart-latency"],
-  ["annotations",                  "chart-annotations"],
-  ["correction_rate",              "chart-correction-rate"],
+
   ["top_clusters",                 "chart-top-clusters"],
-  ["cache_efficiency",             "chart-cache-efficiency"],
   ["cluster_correction_breakdown", "chart-cluster-correction-breakdown"],
-  ["command_outcome_rate",         "chart-command-outcome-rate"],
-  ["unsupported_claim_rate",       "chart-unsupported-claim-rate"],
+
+  ["turns_per_day",                "chart-turns-per-day"],
+  ["tokens_by_model",              "chart-tokens-by-model"],
+  ["correction_rate",              "chart-correction-rate"],
+  ["annotations",                  "chart-annotations"],
+  ["cache_efficiency",             "chart-cache-efficiency"],
 ];
 
 const PLOT_CONFIG = { responsive: true, displaylogo: false };

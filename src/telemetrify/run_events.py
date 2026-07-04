@@ -341,22 +341,27 @@ def outcome_trend(conn: sqlite3.Connection, *, bucket: str = "week") -> list[dic
     success_tags = {r["tag"] for r in rules if r.get("outcome") == "success"}
     failure_tags = {r["tag"] for r in rules if r.get("outcome") == "failure"}
     fmt = "%Y-W%W" if bucket == "week" else "%Y-%m-%d"
+    # Build the IN(...) placeholder lists BEFORE the f-string is assembled so
+    # no old-style `%` interpolation ever runs on a string that already
+    # contains the literal `%Y` / `%W` / `%m` / `%d` from strftime's format
+    # spec — doing `"""...""" % {...}` on top of that collided with the
+    # literal percent-escapes and raised
+    # `ValueError: unsupported format character 'Y'`.
+    succ_placeholders = ",".join("?" * len(success_tags)) or "''"
+    fail_placeholders = ",".join("?" * len(failure_tags)) or "''"
     rows = conn.execute(
         f"""
         SELECT strftime('{fmt}', re.started_at) AS b,
                CASE WHEN re.outcome_tag IS NULL THEN '__unresolved__'
-                    WHEN re.outcome_tag IN (%(succ)s) THEN 'success'
-                    WHEN re.outcome_tag IN (%(fail)s) THEN 'failure'
+                    WHEN re.outcome_tag IN ({succ_placeholders}) THEN 'success'
+                    WHEN re.outcome_tag IN ({fail_placeholders}) THEN 'failure'
                     ELSE 'other' END AS kind,
                COUNT(*) AS n
         FROM run_events re
         WHERE re.started_at IS NOT NULL
         GROUP BY b, kind
         ORDER BY b
-        """ % {
-            "succ": ",".join("?" * len(success_tags)) or "''",
-            "fail": ",".join("?" * len(failure_tags)) or "''",
-        },
+        """,
         (*success_tags, *failure_tags),
     ).fetchall() if (success_tags and failure_tags) else []
     # Fallback when the rule set has no success or failure tags (shouldn't

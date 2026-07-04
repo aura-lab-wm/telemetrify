@@ -18,6 +18,7 @@ from typing import Iterable
 
 import numpy as np
 
+from .ai.cluster_label import _is_image_placeholder
 from .db import serialize_embedding
 
 
@@ -28,6 +29,27 @@ NEAREST_CLUSTER_MAX_DIST = 0.30
 def _unpack(b: bytes) -> np.ndarray:
     n = len(b) // 4
     return np.array(struct.unpack(f"{n}f", b), dtype=np.float32)
+
+
+def _label_from_user_text(user_text: str | None) -> str:
+    """Pick a human-facing cluster label from a representative turn's user_text.
+
+    Walks lines looking for the first one that is real text, guarding
+    against two issues found live in the label a rebuild persists:
+      - an IndexError when user_text is empty/whitespace-only (`"".splitlines()`
+        is `[]`, so blindly indexing `[0]` crashes);
+      - Claude Code's image-paste placeholder text (e.g. the resize-hint
+        "[Image: original 3024x80, displayed at 2000x53...]" or the bare
+        "[Image #2]" form) ending up as the label verbatim. Reuses the exact
+        _is_image_placeholder helper ai/cluster_label.py already applies to
+        this same problem, rather than re-implementing the regex here.
+    """
+    for line in (user_text or "").strip().splitlines():
+        line = line.strip()
+        if not line or _is_image_placeholder(line):
+            continue
+        return line[:120]
+    return ""
 
 
 def _load_window(conn: sqlite3.Connection) -> tuple[list[int], np.ndarray]:
@@ -108,11 +130,30 @@ def rebuild_clusters(conn: sqlite3.Connection, min_cluster_size: int = 3, log=pr
             if sims[best] >= 0.85 and old_ids[best] not in reused.values():
                 reused[ni] = old_ids[best]
 
-    # Wipe and rewrite assignments + cluster metadata.
+    # Wipe and rewrite assignments + cluster metadata -- but ONLY for the
+    # turns actually reprocessed in this run (`ids`, the WINDOW_RECENT +
+    # annotated window). WINDOW_RECENT exists purely as a perf cap so
+    # per-rebuild cost stays bounded (see module docstring); it is not a
+    # signal that turns outside it should lose their cluster membership. A
+    # blanket `DELETE FROM turn_cluster` here would silently discard
+    # membership for every turn outside the window on every rebuild, so we
+    # scope the delete to `ids` instead.
     with conn:
-        conn.execute("DELETE FROM turn_cluster")
+        placeholders = ",".join(["?"] * len(ids))
+        conn.execute(f"DELETE FROM turn_cluster WHERE turn_id IN ({placeholders})", ids)
+
         # Don't delete prompt_clusters wholesale; reuse rows where possible.
+        # Also keep any cluster that (after the scoped delete above) is still
+        # referenced by an out-of-window turn_cluster row: prompt_clusters
+        # has ON DELETE SET NULL on turn_cluster.cluster_id, so deleting a
+        # cluster here would cascade into wiping cluster_id for those
+        # untouched turns -- the same membership loss as a blanket wipe, one
+        # hop removed.
         kept_ids = set(reused.values())
+        still_referenced = conn.execute(
+            "SELECT DISTINCT cluster_id FROM turn_cluster WHERE cluster_id IS NOT NULL"
+        ).fetchall()
+        kept_ids |= {r["cluster_id"] for r in still_referenced}
         conn.execute(f"DELETE FROM prompt_clusters WHERE id NOT IN ({','.join(['?']*len(kept_ids)) or 'NULL'})",
                      list(kept_ids) or [])
 
@@ -123,13 +164,13 @@ def rebuild_clusters(conn: sqlite3.Connection, min_cluster_size: int = 3, log=pr
             rep_idx = int(np.argmax(sims))
             rep_turn = tids[rep_idx]
             rep_text = conn.execute("SELECT user_text FROM turns WHERE id=?", (rep_turn,)).fetchone()
-            label_text = (rep_text["user_text"] if rep_text else "").strip().splitlines()[0][:120] if rep_text else ""
+            label_text = _label_from_user_text(rep_text["user_text"] if rep_text else None)
 
             if ni in reused:
                 cid = reused[ni]
                 conn.execute(
-                    "UPDATE prompt_clusters SET label=?, representative_turn_id=?, member_count=?, updated_at=datetime('now') WHERE id=?",
-                    (label_text, rep_turn, len(tids), cid),
+                    "UPDATE prompt_clusters SET label=?, representative_turn_id=?, updated_at=datetime('now') WHERE id=?",
+                    (label_text, rep_turn, cid),
                 )
             else:
                 cur = conn.execute(
@@ -143,6 +184,18 @@ def rebuild_clusters(conn: sqlite3.Connection, min_cluster_size: int = 3, log=pr
                 conn.execute(
                     "INSERT OR REPLACE INTO turn_cluster(turn_id, cluster_id, similarity_to_centroid) VALUES (?, ?, ?)",
                     (tid, cid, sim),
+                )
+
+            if ni in reused:
+                # member_count must reflect ALL members -- including any
+                # out-of-window turns that still point at this reused
+                # cluster id and were left untouched above -- not just the
+                # turns reprocessed in this run.
+                actual_count = conn.execute(
+                    "SELECT COUNT(*) AS n FROM turn_cluster WHERE cluster_id=?", (cid,)
+                ).fetchone()["n"]
+                conn.execute(
+                    "UPDATE prompt_clusters SET member_count=? WHERE id=?", (actual_count, cid)
                 )
 
     log(f"rebuilt: {len(new_clusters)} clusters over {mat.shape[0]} prompts "

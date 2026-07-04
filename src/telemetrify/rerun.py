@@ -4,6 +4,12 @@ Looks up a recorded turn, builds a `claude -p ...` command, runs it inside a
 fresh workspace dir, and records the result in the `reruns` table. The rerun's
 own Stop hook will then ingest the resulting session JSONL with `origin='rerun'`
 so the two turns can be diffed in the UI.
+
+Rerun fidelity caveat: the replay excludes hooks/skills/CLAUDE.md/MCP servers
+and builtin tools (see the `--safe-mode`/`--tools ""` comment in run_rerun())
+so the call can't hang headlessly; this isn't a fidelity loss for tool-requiring
+turns, since an unattended headless replay could never faithfully reproduce a
+turn that originally needed a human to approve a tool call anyway.
 """
 
 from __future__ import annotations
@@ -158,6 +164,12 @@ def run_rerun(turn_id: int, model: str | None = None,
         "--no-session-persistence",
         "--model", chosen_model,
         "--max-budget-usd", f"{budget_usd:g}",
+        # Isolate from the user's global ~/.claude config so this headless call
+        # can't hang on OAuth-gated MCP setup or an unanswerable permission
+        # prompt — see ai/backends/claude_cli.py's complete() for the full
+        # rationale (2026-07-04 incident).
+        "--safe-mode",
+        "--tools", "",
     ]
 
     run_at = datetime.now(timezone.utc).isoformat(timespec="seconds")

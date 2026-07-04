@@ -56,7 +56,15 @@ function formatTimeAgo(iso) {
 
 // Compact number formatting: 7300 → "7,300", 1_200_000 → "1.2M".
 // For the fold "tokens" pill specifically — tight, glanceable.
+// Delegates to window.TM.formatCompact (utils.js), same guarded-delegation
+// pattern as formatTimeAgo above, so this implementation isn't maintained
+// twice in two files. utils.js is always loaded and executed by the time
+// this is actually called (init() only runs on/after DOMContentLoaded, by
+// which point every synchronous <script> on the page — including utils.js —
+// has already run), but the local fallback is kept for defense-in-depth in
+// case a future page reorders/omits that script tag.
 function formatCompact(n) {
+  if (window.TM && window.TM.formatCompact) return window.TM.formatCompact(n);
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
   const abs = Math.abs(n);
   if (abs >= 1_000_000) {
@@ -70,6 +78,7 @@ function formatCompact(n) {
 }
 
 function formatWithCommas(n) {
+  if (window.TM && window.TM.formatWithCommas) return window.TM.formatWithCommas(n);
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
   return Number(n).toLocaleString("en-US");
 }
@@ -205,6 +214,18 @@ function greedyWrap(text, maxCharsPerLine, maxLines) {
     }
   }
   if (current) lines.push(current);
+  // Once `maxLines - 1` lines have already been pushed, the loop above stops
+  // wrapping altogether (see the `lines.length < maxLines - 1` guard) and
+  // every remaining word just piles onto `current` unconditionally — so the
+  // FINAL line has no length bound at all. An unusually long title (more
+  // words than `maxLines` lines can hold even at this width) would still
+  // overflow the container on that last line. Truncate it with an ellipsis
+  // like the category-label helpers below do, rather than leaving it
+  // unbounded.
+  if (lines.length >= maxLines && lines[lines.length - 1].length > maxCharsPerLine) {
+    const last = lines[lines.length - 1];
+    lines[lines.length - 1] = last.slice(0, Math.max(1, maxCharsPerLine - 1)).trimEnd() + "…";
+  }
   return lines.join("<br>");
 }
 
@@ -282,7 +303,14 @@ function adaptCategoryLabelsForWidth(fig, containerWidth) {
     Math.floor((containerWidth * CATEGORY_LABEL_WIDTH_FRACTION - CATEGORY_LABEL_SAFETY_PX) / CATEGORY_LABEL_CHAR_PX)
   );
   for (const trace of fig.data) {
-    if (trace.type !== "heatmap" || !Array.isArray(trace.y)) continue;
+    // Heatmap y-axis tool names (tool_heatmap) hit this exact clipping
+    // problem, but so does a horizontal bar chart's y-axis category label —
+    // top_clusters and cluster_correction_breakdown both plot long cluster
+    // labels the same way. Cover both trace shapes rather than only the
+    // heatmap one.
+    const isHeatmap = trace.type === "heatmap";
+    const isHorizontalBar = trace.type === "bar" && trace.orientation === "h";
+    if ((!isHeatmap && !isHorizontalBar) || !Array.isArray(trace.y)) continue;
     trace.y = trace.y.map((label) => {
       if (typeof label !== "string" || label.length <= maxChars) return label;
       const keep = Math.max(3, maxChars - 1);
@@ -560,22 +588,57 @@ async function reactToLayoutSafely(el, working) {
 // already-shrunk margin. ─────────────────────────────────────────────────
 const chartState = new Map(); // divId -> { el, fig }
 
+// Re-entrancy guard for renderAdapted: reactToLayoutSafely + reconcileLegendPlacement
+// can each make several AWAITED Plotly.react calls in sequence, so a single
+// renderAdapted pass can easily take longer than RESIZE_DEBOUNCE_MS. Rapid or
+// continuous resizing can then settle-fire the debounced ResizeObserver
+// callback (see observeResize below) again for the SAME div before the prior
+// in-flight pass has finished, which would let two concurrent Plotly.react
+// calls race on one DOM node. Track an in-flight flag per div: while one is
+// running, a new request doesn't start a second one concurrently — it just
+// marks itself "pending" — and exactly one more pass runs once the in-flight
+// one settles. That trailing pass re-reads el.clientWidth/clientHeight fresh,
+// so it still ends up adapted to whatever size the div is ACTUALLY at once
+// things quiet down, even though the intermediate request was coalesced away
+// rather than queued.
+const renderInFlight = new Set(); // divIds with a renderAdapted pass currently running
+const renderPending  = new Set(); // divIds that asked for another pass mid-flight
+
 async function renderAdapted(divId) {
-  const state = chartState.get(divId);
-  if (!state) return;
-  const { el, fig } = state;
-  const working = JSON.parse(JSON.stringify(fig));
-  // The server already painted the layout in Ledger tones — don't override
-  // colors/grid/paper. Title/axis wrapping, category-label truncation, and
-  // legend/margin placement are the responsive exceptions (see the adapt*
-  // functions above), and all are re-derived from the container's CURRENT
-  // measured size on every render, not just the first one.
-  adaptTitleForWidth(working, el.clientWidth);
-  adaptAxesForWidth(working, el.clientWidth);
-  adaptCategoryLabelsForWidth(working, el.clientWidth);
-  adaptLegendForHeight(working, el.clientWidth, el.clientHeight);
-  await reactToLayoutSafely(el, working);
-  await reconcileLegendPlacement(el, working);
+  if (renderInFlight.has(divId)) {
+    renderPending.add(divId);
+    return;
+  }
+  renderInFlight.add(divId);
+  try {
+    const state = chartState.get(divId);
+    if (!state) return;
+    const { el, fig } = state;
+    const working = JSON.parse(JSON.stringify(fig));
+    // The server already painted the layout in Ledger tones — don't override
+    // colors/grid/paper. Title/axis wrapping, category-label truncation, and
+    // legend/margin placement are the responsive exceptions (see the adapt*
+    // functions above), and all are re-derived from the container's CURRENT
+    // measured size on every render, not just the first one.
+    adaptTitleForWidth(working, el.clientWidth);
+    adaptAxesForWidth(working, el.clientWidth);
+    adaptCategoryLabelsForWidth(working, el.clientWidth);
+    adaptLegendForHeight(working, el.clientWidth, el.clientHeight);
+    await reactToLayoutSafely(el, working);
+    await reconcileLegendPlacement(el, working);
+  } finally {
+    renderInFlight.delete(divId);
+    if (renderPending.delete(divId)) {
+      // Another resize settled while this pass was in flight — run once
+      // more now rather than leaving the div stale on the size the in-flight
+      // pass started from. Fire-and-forget from here too, so catch/log
+      // instead of letting a rejection go unhandled (same reasoning as the
+      // ResizeObserver callback below).
+      renderAdapted(divId).catch((err) => {
+        console.error(`[dashboard] trailing resize re-render failed for ${divId}:`, err);
+      });
+    }
+  }
 }
 
 // Re-adapt on resize — a plain window-resize handler is not enough: a
@@ -591,6 +654,10 @@ async function renderAdapted(divId) {
 // window resize.
 const RESIZE_DEBOUNCE_MS = 120;
 
+// divId -> ResizeObserver, so they can all be disconnected in one place (see
+// the pagehide listener below) instead of leaking silently.
+const resizeObservers = new Map();
+
 function observeResize(el, divId) {
   let lastW = el.clientWidth;
   let lastH = el.clientHeight;
@@ -602,10 +669,35 @@ function observeResize(el, divId) {
     lastW = w;
     lastH = h;
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => { renderAdapted(divId); }, RESIZE_DEBOUNCE_MS);
+    timer = setTimeout(() => {
+      // Fire-and-forget from a ResizeObserver callback: nothing here awaits
+      // this promise, so a rejection (e.g. the "axis scaling" Plotly.react
+      // failure documented above reconcileLegendPlacement, most likely when
+      // the plot area gets very small mid-resize) would otherwise surface as
+      // an unhandled promise rejection with no recovery and no visible
+      // error. Catch and log instead — the chart div just keeps whatever
+      // last rendered successfully, and the next resize (or the
+      // renderPending trailing pass inside renderAdapted) gets another
+      // chance to converge.
+      renderAdapted(divId).catch((err) => {
+        console.error(`[dashboard] resize re-render failed for ${divId}:`, err);
+      });
+    }, RESIZE_DEBOUNCE_MS);
   });
   ro.observe(el);
+  resizeObservers.set(divId, ro);
 }
+
+// Chart divs are static for the lifetime of this page — CHARTS never grows
+// or shrinks and divs are never removed from the DOM — so these observers
+// are harmless today; nothing in the current architecture ever needs a
+// disconnect() to avoid leaking. Wire one up anyway, keyed off page
+// teardown, so this doesn't quietly become a real leak if the dashboard
+// ever starts mounting/unmounting chart divs dynamically.
+window.addEventListener("pagehide", () => {
+  for (const ro of resizeObservers.values()) ro.disconnect();
+  resizeObservers.clear();
+});
 
 async function loadChart(name, divId) {
   const el = document.getElementById(divId);

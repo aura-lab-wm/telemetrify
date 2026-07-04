@@ -14,6 +14,7 @@ import json
 import os
 import sqlite3
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -70,6 +71,35 @@ class AICallResult:
 class AnthropicClient:
     DEFAULT_DAILY_CAP_USD = float(os.environ.get("AI_BUDGET_USD_PER_DAY", "2.00"))
 
+    # ── BUG 5 fix: scope --backfill-budget override spend to THIS invocation ──
+    # `_override_spend_usd()` used to SUM every ai_runs row ever written with
+    # override_budget=1 — i.e. the lifetime-cumulative spend across EVERY
+    # --backfill-budget run anyone has ever made. That meant a brand new
+    # backfill invocation could fail immediately because of a completely
+    # unrelated earlier run's spend (e.g. yesterday's grader backfill already
+    # "used up" today's override cap before a single call in today's run had
+    # happened).
+    #
+    # "This invocation" == "this OS process": a backfill CLI run (bin/grade
+    # --backfill-budget, bin/label --backfill-budget, ...) is one process, but
+    # it may fan out across several worker threads that each open their own
+    # sqlite connection (see grader.grade_batch's ThreadPoolExecutor) and
+    # construct a fresh AnthropicClient per turn/item. So the marker has to be
+    # process-wide (a class attribute), not per-connection or per-instance —
+    # a per-connection marker would let one worker thread's reservation go
+    # uncounted by a sibling thread that captured its own baseline a moment
+    # later (an undercount, the same shape of bug as BUG 2).
+    #
+    # Implementation: remember the MAX ai_runs.id that existed the first time
+    # ANY client in this process checks an override budget. Every override
+    # check for the rest of the process's life sums only rows with
+    # id > that marker — i.e. rows THIS invocation itself created. A future
+    # process (tomorrow's backfill run) re-imports this module fresh, so its
+    # marker starts at None again and gets recomputed against the DB state at
+    # ITS OWN start.
+    _override_session_start_id: int | None = None
+    _override_session_lock = threading.Lock()
+
     def __init__(
         self,
         conn: sqlite3.Connection,
@@ -97,12 +127,23 @@ class AnthropicClient:
         return float(row["s"] if row else 0.0)
 
     def _override_spend_usd(self) -> float:
+        if AnthropicClient._override_session_start_id is None:
+            with AnthropicClient._override_session_lock:
+                if AnthropicClient._override_session_start_id is None:
+                    row0 = self.conn.execute(
+                        "SELECT COALESCE(MAX(id), 0) AS m FROM ai_runs"
+                    ).fetchone()
+                    AnthropicClient._override_session_start_id = int(
+                        row0["m"] if row0 else 0
+                    )
         row = self.conn.execute(
             """
             SELECT COALESCE(SUM(cost_usd), 0) AS s
             FROM ai_runs
             WHERE COALESCE(override_budget, 0) = 1
-            """
+              AND id > ?
+            """,
+            (AnthropicClient._override_session_start_id,),
         ).fetchone()
         return float(row["s"] if row else 0.0)
 

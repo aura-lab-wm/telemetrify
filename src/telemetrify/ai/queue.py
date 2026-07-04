@@ -1,8 +1,12 @@
 """Smart Rerun Queue — score turns worth replaying, surface as a ranked list.
 
 Score = 0.40 * cluster_size_norm
-      + 0.30 * days_since_last_rerun_norm
-      + 0.20 * (1 - quality / 5)        — only if auto-graded
+      + 0.30 * turn_age_norm            — days since the turn happened
+                                           (turns.started_at), saturating at
+                                           60 days; NOT days since the turn
+                                           was last rerun
+      + 0.20 * (1 - quality / 5)        — only if auto-graded, else a 0.4
+                                           mid-prior
       + 0.10 * has_followup
 
 Candidates with a rerun in the last 30 days are excluded.
@@ -12,6 +16,23 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timezone
+
+from .cluster_label import _is_image_placeholder
+
+
+def _first_real_line(user_text: str | None, limit: int) -> str:
+    """First non-blank line of `user_text` that isn't a Claude Code
+    image-paste placeholder ("[Image: original WxH...]" / "[Image #N]").
+    Mirrors cluster_label._members_for_cluster's line-selection so a bare
+    `.splitlines()[0]` never surfaces placeholder text -- and never raises
+    IndexError on empty/whitespace-only user_text, which the old unguarded
+    `splitlines()[0]` would."""
+    for line in (user_text or "").strip().splitlines():
+        line = line.strip()
+        if not line or _is_image_placeholder(line):
+            continue
+        return line[:limit]
+    return ""
 
 
 def score_candidates(conn: sqlite3.Connection, *, k: int = 20) -> list[dict]:
@@ -58,15 +79,18 @@ def score_candidates(conn: sqlite3.Connection, *, k: int = 20) -> list[dict]:
             except Exception:
                 pass
 
-        # Age in days from started_at.
-        days_old = 9999.0
+        # Age in days from started_at. A malformed/unparseable started_at is a
+        # data-integrity problem, not evidence of staleness -- skip the row
+        # rather than defaulting to a "9999 days stale" sentinel, which would
+        # artificially boost bad data to the very top of the queue via
+        # age_norm (saturates at 1.0, the same as a genuinely ancient turn).
         try:
             dt = datetime.fromisoformat((r["started_at"] or "").replace("Z", "+00:00"))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             days_old = max(0.0, (now - dt).total_seconds() / 86400.0)
         except Exception:
-            pass
+            continue
 
         cluster_n = int(r["cluster_members"] or 0)
         cluster_norm = (cluster_n / max_cluster) if max_cluster else 0.0
@@ -87,7 +111,7 @@ def score_candidates(conn: sqlite3.Connection, *, k: int = 20) -> list[dict]:
         )
         candidates.append({
             "turn_id": int(r["turn_id"]),
-            "user_text_snippet": (r["user_text"] or "").strip().splitlines()[0][:160],
+            "user_text_snippet": _first_real_line(r["user_text"], 160),
             "cwd": r["cwd"],
             "model": r["model"],
             "session_id": r["session_id"],

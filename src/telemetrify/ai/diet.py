@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from . import prompts as P, schemas as S
 from .client import AnthropicClient, BudgetExceeded
+from .cluster_label import _is_image_placeholder
 from ..db import connect
 
 
@@ -40,17 +41,26 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
 def _candidate_clusters(conn: sqlite3.Connection, *, min_members: int = 5,
                          max_quality: float = 4.0, limit: int = 20) -> list[dict]:
     """Clusters most worth dieting."""
+    # turn_followups.turn_id identifies the *follow-up* turn itself; the turn
+    # that got followed-up-on (i.e. the one whose prompt is worth dieting) is
+    # referenced by turn_followups.prev_turn_id. Joining on f.turn_id (as this
+    # used to) checks "is this member itself a follow-up to something else",
+    # which inverts the intended "does this member get followed up on" signal.
+    # An EXISTS correlated subquery (rather than a LEFT JOIN ... prev_turn_id)
+    # also avoids fanning out turn_cluster rows when a turn has more than one
+    # turn_followups row pointing at it.
     return [dict(r) for r in conn.execute(
         """
         SELECT pc.id, COALESCE(pc.auto_label, pc.label) AS label,
                pc.member_count, pc.representative_turn_id,
                AVG(g.quality) AS avg_quality,
-               SUM(CASE WHEN f.turn_id IS NOT NULL THEN 1 ELSE 0 END) * 1.0
+               SUM(CASE WHEN EXISTS (
+                     SELECT 1 FROM turn_followups f WHERE f.prev_turn_id = tc.turn_id
+                   ) THEN 1 ELSE 0 END) * 1.0
                  / pc.member_count AS followup_rate
         FROM prompt_clusters pc
         JOIN turn_cluster tc ON tc.cluster_id = pc.id
         LEFT JOIN auto_grades g ON g.turn_id = tc.turn_id
-        LEFT JOIN turn_followups f ON f.turn_id = tc.turn_id
         WHERE pc.member_count >= ?
         GROUP BY pc.id
         HAVING avg_quality IS NULL OR avg_quality < ? OR followup_rate > 0.1
@@ -61,15 +71,24 @@ def _candidate_clusters(conn: sqlite3.Connection, *, min_members: int = 5,
 
 
 def _members(conn: sqlite3.Connection, cluster_id: int, k: int = 5) -> list[str]:
-    return [
-        (r["user_text"] or "").strip().splitlines()[0][:280]
-        for r in conn.execute(
-            """SELECT t.user_text FROM turn_cluster tc JOIN turns t ON t.id = tc.turn_id
-               WHERE tc.cluster_id = ? ORDER BY t.id DESC LIMIT ?""",
-            (cluster_id, k),
-        ).fetchall()
-        if r["user_text"]
-    ]
+    # Mirrors cluster_label._members_for_cluster: walk each turn's lines for
+    # the first one that isn't blank or a Claude Code image-paste placeholder
+    # ("[Image: original WxH...]" / "[Image #N]") rather than blindly taking
+    # splitlines()[0], which could surface that placeholder verbatim (or raise
+    # IndexError on whitespace-only user_text).
+    out = []
+    for r in conn.execute(
+        """SELECT t.user_text FROM turn_cluster tc JOIN turns t ON t.id = tc.turn_id
+           WHERE tc.cluster_id = ? ORDER BY t.id DESC LIMIT ?""",
+        (cluster_id, k),
+    ).fetchall():
+        for line in (r["user_text"] or "").strip().splitlines():
+            line = line.strip()
+            if not line or _is_image_placeholder(line):
+                continue
+            out.append(line[:280])
+            break
+    return out
 
 
 def propose_for_cluster(conn: sqlite3.Connection, cluster_id: int,

@@ -9,7 +9,7 @@ import argparse
 import json
 import sqlite3
 import sys
-from datetime import datetime, timezone, date as _date
+from datetime import datetime, timezone
 
 from . import prompts as P, schemas as S
 from .client import AnthropicClient, BudgetExceeded
@@ -41,11 +41,17 @@ def _stats(conn: sqlite3.Connection, day: str) -> dict:
            FROM turns t LEFT JOIN auto_grades g ON g.turn_id=t.id
            WHERE date(t.started_at) = ?""", (day,),
     ).fetchone()
+    # A plain LEFT JOIN against turn_followups fans out when a turn has more
+    # than one follow-up row, inflating both COUNT(*) and the corrected sum.
+    # An EXISTS correlated subquery counts each turn exactly once regardless
+    # of how many turn_followups rows reference it.
     correction = conn.execute(
         """SELECT
               COUNT(*) AS total,
-              SUM(CASE WHEN f.turn_id IS NOT NULL THEN 1 ELSE 0 END) AS corrected
-           FROM turns t LEFT JOIN turn_followups f ON f.prev_turn_id=t.id
+              SUM(CASE WHEN EXISTS (
+                    SELECT 1 FROM turn_followups f WHERE f.prev_turn_id = t.id
+                  ) THEN 1 ELSE 0 END) AS corrected
+           FROM turns t
            WHERE date(t.started_at) = ?""", (day,),
     ).fetchone()
     top_clusters = [dict(r) for r in conn.execute(
@@ -82,7 +88,14 @@ def generate(conn: sqlite3.Connection, day: str | None = None,
              *, notify_push: bool = False,
              override_budget_usd: float | None = None) -> dict | None:
     _ensure_table(conn)
-    day = day or _date.today().isoformat()
+    # turns.started_at is stored in UTC (see capture.py/backfill.py), and the
+    # `date(t.started_at) = ?` filters below run against that UTC value, so
+    # the default "today" must also be the UTC calendar date -- not the local
+    # one -- or turns get misattributed to the wrong day's digest near
+    # midnight in the operator's local timezone. This matches the UTC-day
+    # convention used elsewhere (dashboard.js treats bare SQLite timestamps as
+    # UTC; charts.py buckets with SQLite's date('now'), which is UTC).
+    day = day or datetime.now(timezone.utc).date().isoformat()
     stats = _stats(conn, day)
     if stats["turns_today"] == 0:
         return None

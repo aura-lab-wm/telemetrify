@@ -64,6 +64,35 @@ _KNOWN_PATHS = (
 _DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
 
 
+def _log(msg: str) -> None:
+    """Cheap diagnostic line to stderr — same convention as ai/router.py's
+    `_log` (grep '[claude_cli]' data/ui-stderr.log)."""
+    import sys
+    print(f"[claude_cli] {msg}", file=sys.stderr, flush=True)
+
+
+def _augment_system_prompt(system: str, json_schema: Any | None) -> str:
+    """BUG 5 (2026-07 audit): json_schema had no effect at all on this tier
+    — the CLI has no guided-decoding equivalent of vLLM's structured output
+    API, so there's no wire-level way to enforce a shape. The one lever we
+    do have is a plain-text steer appended to the system prompt. This is
+    best-effort only (nothing enforces it at decode time — the router's
+    post-hoc schema validation is still what actually catches a bad shape),
+    but it's strictly better than silently ignoring the hint entirely."""
+    if not json_schema:
+        return system
+    try:
+        import json as _json
+        hint = _json.dumps(json_schema)
+    except Exception:
+        return system
+    return (
+        f"{system}\n\nYour entire response MUST be a single JSON object "
+        f"matching this shape (field: {{type, constraints}}): {hint}\n"
+        f"Return ONLY that JSON object — no prose, no markdown code fences."
+    )
+
+
 def _resolve_bin() -> str | None:
     """Locate the real `claude` executable (never the shell-function wrapper)."""
     env_bin = os.environ.get("CLAUDE_CLI_BIN")
@@ -131,7 +160,7 @@ class ClaudeCLIBackend:
             "--output-format", "json",
             "--model", eff_model,
             "--max-turns", "1",
-            "--append-system-prompt", system,
+            "--append-system-prompt", _augment_system_prompt(system, json_schema),
             # Isolate from the user's global ~/.claude config — see the module
             # docstring above for the full rationale (2026-07-04 hang incident).
             "--safe-mode",
@@ -160,6 +189,16 @@ class ClaudeCLIBackend:
         # prompt each call). Never shrink below our own floor — a short caller
         # timeout (e.g. the planner's 20s) would spuriously kill a healthy call.
         eff_timeout = max(float(timeout or 0.0), self.request_timeout_s)
+        # BUG 3 (2026-07 audit): that floor used to raise a caller's timeout
+        # silently. Keep the floor (real reason: genuinely slow cold-start —
+        # see module docstring), but make the override visible so a caller
+        # expecting e.g. 20s and actually waiting 120s isn't a silent
+        # surprise during debugging.
+        if timeout is not None and eff_timeout > timeout:
+            _log(
+                f"requested timeout={timeout}s raised to floor "
+                f"{self.request_timeout_s}s (effective={eff_timeout}s)"
+            )
         try:
             proc = subprocess.run(
                 argv,
@@ -206,4 +245,12 @@ class ClaudeCLIBackend:
             input_tokens=in_tok,
             output_tokens=out_tok,
             model=eff_model,
+            # BUG 4: the `-p --output-format json` envelope has no per-call
+            # finish/stop-reason field (subtype=="success" only tells us the
+            # overall agent turn didn't error; it doesn't distinguish a
+            # naturally-finished completion from one truncated by the
+            # model's own max output tokens). Left None rather than guess —
+            # unlike the other two tiers, this one genuinely has no signal
+            # to surface here.
+            stop_reason=None,
         )

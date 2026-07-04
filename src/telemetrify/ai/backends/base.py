@@ -19,6 +19,14 @@ class BackendResponse:
     input_tokens: int
     output_tokens: int
     model: str
+    # Why the model stopped generating (e.g. Anthropic's "end_turn" /
+    # "max_tokens" / "stop_sequence", or an OpenAI-compat "finish_reason"
+    # like "stop" / "length"). None when a backend has no way to surface
+    # this (e.g. the claude CLI's JSON envelope doesn't expose it).
+    # Populated so a max_tokens-truncated completion that happens to still
+    # parse as syntactically-valid-but-incomplete JSON isn't silently
+    # treated as a complete, correct response — see BUG 4, 2026-07 audit.
+    stop_reason: str | None = None
 
 
 class BackendUnavailable(RuntimeError):

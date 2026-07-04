@@ -86,7 +86,15 @@ def test_post_url_and_auth_header(monkeypatch):
     assert headers["Content-Type"] == "application/json"
 
 
-def test_schema_sends_both_guided_json_and_response_format(monkeypatch):
+def test_rocco_schema_sends_verified_json_schema_response_format(monkeypatch):
+    """BUG 2 (2026-07 audit): vLLM only actually enforces guided decoding via
+    response_format: {"type": "json_schema", ...} (live-verified against the
+    real rocco deployment — see openai_compat.py's module docstring). The old
+    guided_json/extra_body shapes were silent no-ops. json_schema here is
+    telemetrify's own internal mini-DSL (ai/schemas.py), the only shape any
+    real caller in this codebase ever passes — NOT a pre-formed JSON Schema
+    dict, which is why this fixture matches GRADER's shape rather than a raw
+    {"type": "object", "properties": ...} dict."""
     from telemetrify.ai.backends.openai_compat import OpenAICompatBackend
 
     captured = {}
@@ -98,19 +106,52 @@ def test_schema_sends_both_guided_json_and_response_format(monkeypatch):
 
     monkeypatch.setattr(httpx.Client, "post", fake_post)
 
-    schema = {"type": "object", "properties": {"quality": {"type": "integer"}}}
+    dsl_schema = {"quality": {"type": "int", "min": 1, "max": 5}}
     b = OpenAICompatBackend(
         name="rocco", base_url="http://localhost:18000/v1", api_key="EMPTY",
         default_model="m", input_price_per_m=0.0, output_price_per_m=0.0,
     )
-    b.complete(system="s", user="u", model="m", max_tokens=32, json_schema=schema)
+    b.complete(system="s", user="u", model="m", max_tokens=32, json_schema=dsl_schema)
 
     body = captured["body"]
-    # Dual hint: vLLM honors guided_json; Ollama Cloud honors response_format
+    assert body.get("response_format") == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "response",
+            "schema": {
+                "type": "object",
+                "properties": {"quality": {"type": "integer", "minimum": 1, "maximum": 5}},
+                "required": ["quality"],
+            },
+        },
+    }
+    assert "guided_json" not in body
+    assert "extra_body" not in body
+
+
+def test_non_rocco_schema_sends_plain_json_object_hint(monkeypatch):
+    """localmac/Ollama Cloud tiers are untouched by BUG 2 — they still get
+    the plain response_format={"type": "json_object"} hint, unrelated to
+    rocco's vLLM-specific guided-decoding wire shape."""
+    from telemetrify.ai.backends.openai_compat import OpenAICompatBackend
+
+    captured = {}
+
+    def fake_post(self, url, **kwargs):
+        captured["body"] = kwargs.get("json")
+        return _make_chat_response('{"quality": 4}')
+
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+
+    dsl_schema = {"quality": {"type": "int", "min": 1, "max": 5}}
+    b = OpenAICompatBackend(
+        name="localmac", base_url="http://localhost:11434/v1", api_key="EMPTY",
+        default_model="m", input_price_per_m=0.0, output_price_per_m=0.0,
+    )
+    b.complete(system="s", user="u", model="m", max_tokens=32, json_schema=dsl_schema)
+
+    body = captured["body"]
     assert body.get("response_format") == {"type": "json_object"}
-    # extra_body is OpenAI SDK semantics; for raw httpx we send the keys inline
-    assert body.get("extra_body", {}).get("guided_json") == schema \
-        or body.get("guided_json") == schema
 
 
 def test_no_schema_sends_neither_hint(monkeypatch):

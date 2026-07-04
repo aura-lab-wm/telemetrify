@@ -60,9 +60,26 @@ class SqliteBackend(Backend):
 
     # ---- reads --------------------------------------------------------
 
-    def query_turns(self, where_clause: str, params: list) -> list[dict]:
-        sql = "SELECT * FROM turns"
-        if where_clause:
-            sql += f" WHERE {where_clause}"
-        cur = self.connect().execute(sql, params)
+    def query_turns(self, filters=None) -> list[dict]:
+        """Run a parameterised SELECT against `turns`, scoped by a `Filters`
+        fragment.
+
+        This previously took a raw `where_clause: str` spliced directly into
+        the SQL text -- a SQL-injection shape (nothing stopped a future
+        caller from building that string out of unsanitised input). It now
+        takes a `telemetrify.search.Filters` instance instead, exactly the
+        mechanism `search.parse_filters()` / `export._turn_query()` already
+        use: `.where` is only ever assembled from hardcoded literal clause
+        templates (see `parse_filters`), and every actual value is bound via
+        `.params`, never interpolated into the SQL string itself.
+        """
+        from ..search import Filters
+        filters = filters or Filters()
+        # Alias `t`, matching `parse_filters()`'s clause templates (e.g.
+        # `t.model = ?`, `EXISTS (... t.id ...)`) -- those clauses assume this
+        # exact alias, same as `search.recent()` / `export._turn_query()`.
+        sql = "SELECT t.* FROM turns t"
+        if filters.where:
+            sql += f" WHERE {filters.where}"
+        cur = self.connect().execute(sql, filters.params)
         return [dict(row) for row in cur.fetchall()]

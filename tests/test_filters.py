@@ -57,6 +57,84 @@ def test_tag_combines_with_other_filters():
     assert "%,seminar-coding-agents,%" in f.params
 
 
+def test_out_of_range_min_tokens_is_dropped_not_overflow():
+    """A min_tokens value outside SQLite's signed-64-bit range used to reach
+    `conn.execute(...)` and raise an unhandled OverflowError (HTTP 500). It
+    should instead be silently dropped, same as any other unparseable value."""
+    f = parse_filters({"min_tokens": "99999999999999999999999999"})
+    assert "input_tokens" not in f.where
+    assert f.params == []
+
+
+def test_out_of_range_negative_max_latency_is_dropped():
+    f = parse_filters({"max_latency_ms": "-99999999999999999999999999"})
+    assert "latency_ms" not in f.where
+    assert f.params == []
+
+
+def test_in_range_tokens_still_bind_normally():
+    f = parse_filters({"min_tokens": "100", "max_tokens": "200"})
+    assert f.params == [100, 200]
+
+
+def test_boundary_int64_values_are_accepted():
+    max64 = 2**63 - 1
+    min64 = -(2**63)
+    f = parse_filters({"min_latency_ms": str(min64), "max_latency_ms": str(max64)})
+    assert f.params == [min64, max64]
+
+
+def test_out_of_range_cluster_is_dropped():
+    f = parse_filters({"cluster": str(2**64)})
+    assert "turn_cluster" not in f.where
+    assert f.params == []
+
+
+def test_cwd_glob_escapes_literal_percent():
+    """A literal `%` in the cwd value must match literally, not act as an
+    SQL LIKE wildcard that matches every row."""
+    f = parse_filters({"cwd_glob": "/Users/x/100%done"})
+    assert "ESCAPE" in f.where
+    assert f.params == ["/Users/x/100\\%done"]
+
+
+def test_cwd_glob_escapes_literal_underscore():
+    f = parse_filters({"cwd_glob": "/Users/x/a_b"})
+    assert f.params == ["/Users/x/a\\_b"]
+
+
+def test_cwd_glob_star_is_still_the_app_wildcard():
+    f = parse_filters({"cwd_glob": "/Users/x/*"})
+    assert f.params == ["/Users/x/%"]
+
+
+def test_cwd_glob_mixed_literal_and_wildcard():
+    f = parse_filters({"cwd_glob": "/Users/x/100%/*"})
+    assert f.params == ["/Users/x/100\\%/%"]
+
+
+def test_cwd_glob_percent_does_not_match_every_row(migrated_db):
+    """End-to-end: a cwd containing a literal '%' must not act as a
+    wildcard matching every row in the table."""
+    conn = migrated_db
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute(
+        "INSERT INTO turns (id, session_id, user_text, assistant_text, started_at, origin, cwd) "
+        "VALUES (1, 's1', 'x', 'a', '2026-05-25T10:00:00Z', 'organic', '/Users/x/100%done')"
+    )
+    conn.execute(
+        "INSERT INTO turns (id, session_id, user_text, assistant_text, started_at, origin, cwd) "
+        "VALUES (2, 's1', 'x', 'a', '2026-05-25T10:00:00Z', 'organic', '/Users/x/other')"
+    )
+    conn.commit()
+
+    f = parse_filters({"cwd_glob": "/Users/x/100%done"})
+    rows = conn.execute(
+        f"SELECT t.id FROM turns t WHERE {f.where} ORDER BY t.id", f.params
+    ).fetchall()
+    assert [r[0] for r in rows] == [1]
+
+
 def test_tag_filters_real_rows(migrated_db):
     """End-to-end: only annotation-tagged turns survive the generated WHERE."""
     conn = migrated_db

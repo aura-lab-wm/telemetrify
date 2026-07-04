@@ -1,6 +1,7 @@
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from fastapi import BackgroundTasks, FastAPI, Form, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -12,8 +13,42 @@ from ..search import hybrid_search, parse_filters, recent, similar_turns, ALLOWE
 from ..doctor import run_health_checks
 from ..charts import CHARTS
 from ..export import export_jsonl, export_csv
-from ..rerun import run_rerun, render_inline_diff
+from ..rerun import run_rerun, render_inline_diff, DEFAULT_BUDGET_USD
 from ..dash0.receiver import router as dash0_router
+
+# ─── CSRF mitigation for state-changing routes ─────────────────────────
+#
+# This app has no auth/session system at all (single-operator, localhost-
+# bound tool) so a full CSRF-token scheme would be over-engineering. The
+# real threat here is a *different* origin — some other page the operator
+# has open in the same browser — issuing a cross-origin fetch/form POST
+# against this service (which is reachable at a fixed, predictable
+# localhost URL). Browsers attach `Origin` (and, failing that, `Referer`)
+# on cross-origin state-changing requests, so requiring an exact match
+# against this app's own origin blocks that vector while imposing zero
+# friction on the dashboard's own same-origin JS/forms.
+#
+# Requests carrying neither header (curl, the CLI, TestClient, other local
+# tooling) are allowed through: they cannot be mounted by a hostile web
+# page, which is the only thing this guards against.
+SAME_ORIGIN_ALLOWLIST = {"http://localhost:8767", "http://127.0.0.1:8767"}
+
+
+def require_same_origin(request: Request) -> None:
+    """FastAPI dependency: 403s a state-changing request whose Origin/Referer
+    names a different origin than this app's own. See module comment above."""
+    candidate = request.headers.get("origin")
+    if candidate is None:
+        referer = request.headers.get("referer")
+        if referer:
+            parts = urlsplit(referer)
+            if parts.scheme and parts.netloc:
+                candidate = f"{parts.scheme}://{parts.netloc}"
+            else:
+                candidate = referer
+    if candidate is not None and candidate not in SAME_ORIGIN_ALLOWLIST:
+        raise HTTPException(status_code=403, detail="cross-origin request rejected")
+
 
 HERE = Path(__file__).resolve().parent
 STATIC_DIR = HERE / "static"
@@ -159,12 +194,14 @@ def index(request: Request):
 def session_detail(request: Request, session_id: str):
     conn = connect()
     session = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    if not session:
+        return HTMLResponse("session not found", status_code=404)
     turns = conn.execute(
         "SELECT * FROM turns WHERE session_id = ? ORDER BY started_at ASC",
         (session_id,),
     ).fetchall()
     return _render("session.html", {
-        "session": dict(session) if session else None,
+        "session": dict(session),
         "turns": [dict(t) for t in turns],
         "q": "",
     })
@@ -221,6 +258,7 @@ def upsert_annotation(
     tags: str = Form(""),
     expected_behavior: str = Form(""),
     notes: str = Form(""),
+    _origin: None = Depends(require_same_origin),
 ):
     conn = connect()
     exists = conn.execute("SELECT 1 FROM turns WHERE id = ?", (turn_id,)).fetchone()
@@ -248,7 +286,7 @@ def upsert_annotation(
 
 
 @app.post("/api/annotations/{turn_id}/delete")
-def delete_annotation(turn_id: int):
+def delete_annotation(turn_id: int, _origin: None = Depends(require_same_origin)):
     conn = connect()
     with conn:
         conn.execute("DELETE FROM annotations WHERE turn_id = ?", (turn_id,))
@@ -609,35 +647,55 @@ def push_vapid_public_key():
 
 
 @app.post("/api/push/subscribe")
-async def push_subscribe(request: Request):
+async def push_subscribe(request: Request, _origin: None = Depends(require_same_origin)):
     from ..push_notify import register_subscription
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "invalid JSON body"}, status_code=400)
-    sub = body.get("subscription", body) if isinstance(body, dict) else {}
-    if not isinstance(sub, dict) or not sub.get("endpoint"):
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
+
+    sub = body.get("subscription", body)
+    if not isinstance(sub, dict) or not isinstance(sub.get("endpoint"), str) or not sub.get("endpoint"):
         return JSONResponse({"error": "missing subscription endpoint"}, status_code=400)
-    keys = sub.get("keys", {}) or {}
-    sub_id = register_subscription(
-        connect(),
-        endpoint=sub["endpoint"],
-        p256dh=keys.get("p256dh", ""),
-        auth=keys.get("auth", ""),
-        user_agent=body.get("user_agent") or request.headers.get("user-agent"),
-    )
+
+    keys = sub.get("keys") or {}
+    if not isinstance(keys, dict):
+        return JSONResponse({"error": "subscription.keys must be an object"}, status_code=400)
+    p256dh = keys.get("p256dh", "")
+    auth = keys.get("auth", "")
+    if not isinstance(p256dh, str) or not isinstance(auth, str):
+        return JSONResponse({"error": "subscription.keys.p256dh/auth must be strings"}, status_code=400)
+
+    user_agent = body.get("user_agent") or request.headers.get("user-agent")
+    if user_agent is not None and not isinstance(user_agent, str):
+        user_agent = None
+
+    try:
+        sub_id = register_subscription(
+            connect(),
+            endpoint=sub["endpoint"],
+            p256dh=p256dh,
+            auth=auth,
+            user_agent=user_agent,
+        )
+    except ValueError as e:
+        # Endpoint failed the push-service allowlist, or the subscription
+        # cap was reached — both are clean client errors, not server bugs.
+        return JSONResponse({"error": str(e)}, status_code=400)
     return JSONResponse({"id": sub_id})
 
 
 @app.post("/api/push/unsubscribe")
-async def push_unsubscribe(request: Request):
+async def push_unsubscribe(request: Request, _origin: None = Depends(require_same_origin)):
     from ..push_notify import unregister_subscription
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "invalid JSON body"}, status_code=400)
     endpoint = body.get("endpoint") if isinstance(body, dict) else None
-    if not endpoint:
+    if not isinstance(endpoint, str) or not endpoint:
         return JSONResponse({"error": "missing endpoint"}, status_code=400)
     ok = unregister_subscription(connect(), endpoint=endpoint)
     return JSONResponse({"removed": ok})
@@ -683,7 +741,8 @@ def insights_page(request: Request):
 
 @app.post("/api/insights/recompute")
 async def api_insights_recompute(background: BackgroundTasks,
-                                  force: bool = False):
+                                  force: bool = False,
+                                  _origin: None = Depends(require_same_origin)):
     """Kick the compute in the background so the click is instant.
     The /insights page polls the cache file's mtime to know when
     it's done."""
@@ -702,7 +761,7 @@ async def api_insights_recompute(background: BackgroundTasks,
 
 
 @app.post("/api/ask")
-async def api_ask(request: Request):
+async def api_ask(request: Request, _origin: None = Depends(require_same_origin)):
     """Stream the Q&A pipeline as SSE: plan → sources → delta → done."""
     import json as _json
     try:
@@ -744,7 +803,7 @@ def api_queue():
 
 # ─── Suggest expected_behavior (Round C2) ──────────────────────────────
 @app.post("/api/annotation/suggest_expected/{turn_id}", response_class=JSONResponse)
-def api_annotation_suggest(turn_id: int):
+def api_annotation_suggest(turn_id: int, _origin: None = Depends(require_same_origin)):
     from ..ai.annotate import suggest_expected
     text = suggest_expected(connect(), turn_id)
     if not text:
@@ -763,7 +822,7 @@ def api_diet_for_cluster(cluster_id: int):
 
 
 @app.post("/api/diet/cluster/{cluster_id}/propose")
-def api_diet_propose(cluster_id: int):
+def api_diet_propose(cluster_id: int, _origin: None = Depends(require_same_origin)):
     from ..ai.diet import propose_for_cluster
     try:
         r = propose_for_cluster(connect(), cluster_id)
@@ -796,7 +855,8 @@ def api_digest_today():
 
 
 @app.post("/api/digest/generate")
-async def api_digest_generate(request: Request, background: BackgroundTasks):
+async def api_digest_generate(request: Request, background: BackgroundTasks,
+                               _origin: None = Depends(require_same_origin)):
     """Trigger digest generation in the background. Returns 202."""
     body = {}
     try: body = await request.json()
@@ -813,8 +873,12 @@ async def api_digest_generate(request: Request, background: BackgroundTasks):
     return JSONResponse({"status": "scheduled"}, status_code=202)
 
 
+MAX_QUEUE_RERUN_ALL = 50  # cap: unbounded turn_ids would queue unbounded billed jobs
+
+
 @app.post("/api/queue/rerun-all")
-async def api_queue_rerun_all(request: Request, background: BackgroundTasks):
+async def api_queue_rerun_all(request: Request, background: BackgroundTasks,
+                               _origin: None = Depends(require_same_origin)):
     form = await request.form()
     raw_ids = form.getlist("turn_ids")
     turn_ids: list[int] = []
@@ -823,6 +887,11 @@ async def api_queue_rerun_all(request: Request, background: BackgroundTasks):
         except ValueError: continue
     if not turn_ids:
         return RedirectResponse("/queue", status_code=303)
+    if len(turn_ids) > MAX_QUEUE_RERUN_ALL:
+        return JSONResponse(
+            {"error": f"too many turn_ids (max {MAX_QUEUE_RERUN_ALL})"},
+            status_code=400,
+        )
 
     def _run_all(ids: list[int]) -> None:
         from ..rerun import run_rerun
@@ -854,13 +923,29 @@ def _run_rerun_safely(turn_id: int, model: str | None, budget_usd: float) -> Non
             pass
 
 
+# Hard cap on the caller-controlled budget forwarded verbatim to a real
+# billed `claude` subprocess call: 10x the operator's own configured default
+# (RERUN_BUDGET_USD / DEFAULT_BUDGET_USD) is generous headroom for a
+# deliberate one-off without leaving the cap unbounded.
+MAX_RERUN_BUDGET_USD = DEFAULT_BUDGET_USD * 10
+
+
 @app.post("/api/rerun/{turn_id}")
 def trigger_rerun(
     turn_id: int,
     background: BackgroundTasks,
     budget_usd: float = Form(0.50),
     model: str = Form(""),
+    _origin: None = Depends(require_same_origin),
 ):
+    # Validate the caller-controlled budget before touching the DB — a bad
+    # value is a client error regardless of whether turn_id exists.
+    if not (0 < budget_usd <= MAX_RERUN_BUDGET_USD):
+        return JSONResponse(
+            {"error": f"budget_usd must be > 0 and <= {MAX_RERUN_BUDGET_USD:g} "
+                      f"(10x the {DEFAULT_BUDGET_USD:g} default)"},
+            status_code=400,
+        )
     conn = connect()
     exists = conn.execute("SELECT 1 FROM turns WHERE id = ?", (turn_id,)).fetchone()
     if not exists:
@@ -945,7 +1030,7 @@ def _classify_ports_api_key() -> str:
 
 
 @app.post("/api/classify-ports", response_class=JSONResponse)
-async def api_classify_ports(request: Request):
+async def api_classify_ports(request: Request, _origin: None = Depends(require_same_origin)):
     """Classify a batch of unknown listening ports using the LLM router.
 
     Body:
@@ -980,6 +1065,9 @@ async def api_classify_ports(request: Request):
     except Exception:
         return JSONResponse({"error": "body must be JSON"}, status_code=400)
 
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
+
     raw_ports = body.get("ports")
     if not isinstance(raw_ports, list) or not raw_ports:
         return JSONResponse({"error": "ports[] required"}, status_code=400)
@@ -990,6 +1078,10 @@ async def api_classify_ports(request: Request):
     # Render the ports block — each port becomes one bullet for the LLM.
     bullets = []
     for p in raw_ports:
+        if not isinstance(p, dict):
+            # A malformed-but-JSON-valid item (e.g. a bare string/int in the
+            # list) has no `.get` — skip it instead of crashing with 500.
+            continue
         try:
             port = int(p.get("port"))
         except (TypeError, ValueError):

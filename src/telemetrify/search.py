@@ -18,6 +18,14 @@ DEFAULT_FANOUT = 50  # candidates pulled from each side before fusion
 # candidate set, so a shallow pool can come back empty for selective filters.
 FILTERED_FANOUT = 1000
 
+# sqlite3 binds Python ints as signed 64-bit SQLite INTEGERs; anything outside
+# this range raises an unhandled OverflowError at bind time (not at parse
+# time), which previously surfaced as a raw HTTP 500 for a query param like
+# `min_tokens=99999999999999999999999999`. Clamp to this range up front so an
+# out-of-range value is treated the same as any other unparseable value.
+_SQLITE_INT_MIN = -(2**63)
+_SQLITE_INT_MAX = 2**63 - 1
+
 # Whitelisted filter param names; anything else is rejected.
 ALLOWED_FILTERS = {
     "model", "cwd_glob", "skill", "cluster", "origin",
@@ -32,6 +40,19 @@ ALLOWED_FILTERS = {
 class Filters:
     where: str = ""
     params: list[Any] = field(default_factory=list)
+
+
+def _escape_like(value: str, escape_char: str = "\\") -> str:
+    """Escape SQL LIKE metacharacters (`%`, `_`) in a user-supplied value so
+    they match literally instead of acting as wildcards. Must be paired with
+    an `ESCAPE '<escape_char>'` clause on the LIKE itself. The escape
+    character must be escaped first so a literal backslash in the input
+    isn't mistaken for an escape sequence."""
+    return (
+        value.replace(escape_char, escape_char * 2)
+        .replace("%", escape_char + "%")
+        .replace("_", escape_char + "_")
+    )
 
 
 def _quote_fts(q: str) -> str:
@@ -50,8 +71,15 @@ def parse_filters(raw: dict[str, str]) -> Filters:
     params: list[Any] = []
 
     def _i(s: str) -> int | None:
-        try: return int(s)
-        except (TypeError, ValueError): return None
+        try:
+            v = int(s)
+        except (TypeError, ValueError):
+            return None
+        if v < _SQLITE_INT_MIN or v > _SQLITE_INT_MAX:
+            # Out of SQLite's bindable range: drop the filter rather than let
+            # it reach `conn.execute(...)` and raise OverflowError.
+            return None
+        return v
 
     def _d(s: str) -> str | None:
         if not s: return None
@@ -61,7 +89,12 @@ def parse_filters(raw: dict[str, str]) -> Filters:
     if (v := raw.get("model")):
         clauses.append("t.model = ?"); params.append(v)
     if (v := raw.get("cwd_glob")):
-        clauses.append("t.cwd LIKE ?"); params.append(v.replace("*", "%"))
+        # `*` is this app's own glob wildcard syntax; escape any literal SQL
+        # LIKE metacharacters (%, _) FIRST so they match literally, then turn
+        # `*` into the real SQL wildcard. Without this a cwd containing a
+        # literal "%" (or "_") would match far more rows than intended.
+        clauses.append("t.cwd LIKE ? ESCAPE '\\'")
+        params.append(_escape_like(v).replace("*", "%"))
     if (v := raw.get("skill")):
         clauses.append("t.attribution_skill = ?"); params.append(v)
     if (v := _i(raw.get("cluster", ""))) is not None:

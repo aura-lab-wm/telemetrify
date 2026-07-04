@@ -22,6 +22,7 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from . import DATA_DIR
 
@@ -37,6 +38,46 @@ VAPID_CLAIMS_SUBJECT = "mailto:telemetrify@localhost"
 # Status codes from the push service that mean the subscription is dead and
 # should be evicted from the DB rather than retried.
 _DEAD_STATUS_CODES = {404, 410}
+
+# A real browser's `pushManager.subscribe()` only ever hands back an endpoint
+# hosted by ITS OWN vendor's push service — never an arbitrary URL. Accepting
+# any string here would let a caller register any host it likes as a "push
+# subscription", and `notify()` below would then dutifully POST digest
+# content to it on every future notification (SSRF + content exfiltration).
+# So: require https:// and a host on this allowlist. These are the real push
+# services in use today; extend this list only when a genuine new browser
+# vendor push endpoint is confirmed (check `p256dh`/`endpoint` shape from an
+# actual subscribed browser, don't guess).
+ALLOWED_PUSH_ENDPOINT_HOSTS = (
+    "fcm.googleapis.com",                  # Chrome, Edge, Opera, Brave (Chromium)
+    "updates.push.services.mozilla.com",   # Firefox
+    "web.push.apple.com",                  # Safari (macOS 13+ / iOS 16.4+)
+)
+
+# Hard cap on stored subscriptions. This is a single-operator tool with a
+# handful of browsers at most; capping keeps a registration flood from
+# turning this into an SSRF fan-out amplifier (each stored subscription is a
+# server-initiated outbound POST target on every future `notify()` call).
+MAX_PUSH_SUBSCRIPTIONS = 20
+
+
+def is_allowed_push_endpoint(endpoint: str) -> bool:
+    """True iff `endpoint` is an https:// URL on a known push-service host."""
+    if not isinstance(endpoint, str) or not endpoint:
+        return False
+    try:
+        parsed = urlsplit(endpoint)
+    except ValueError:
+        return False
+    if parsed.scheme != "https":
+        return False
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return False
+    return any(
+        host == allowed or host.endswith("." + allowed)
+        for allowed in ALLOWED_PUSH_ENDPOINT_HOSTS
+    )
 
 
 # ─── logging ──────────────────────────────────────────────────────────────
@@ -133,7 +174,24 @@ def register_subscription(
 
     Uniqueness is on `endpoint`; re-subscribing the same browser refreshes
     `p256dh`/`auth`/`user_agent` and bumps `last_used_at` to now.
+
+    Raises `ValueError` (caller should turn this into a clean 4xx) if
+    `endpoint` isn't a real push-service URL, or if the subscription cap
+    would be exceeded by a genuinely new endpoint.
     """
+    if not is_allowed_push_endpoint(endpoint):
+        _log(f"register_subscription: REJECTED non-allowlisted endpoint={_short(endpoint)}")
+        raise ValueError("endpoint host is not on the allowed push-service list")
+
+    existing = conn.execute(
+        "SELECT 1 FROM push_subscriptions WHERE endpoint = ?", (endpoint,)
+    ).fetchone()
+    if existing is None:
+        count = conn.execute("SELECT COUNT(*) AS n FROM push_subscriptions").fetchone()["n"]
+        if count >= MAX_PUSH_SUBSCRIPTIONS:
+            _log(f"register_subscription: REJECTED cap reached ({count}/{MAX_PUSH_SUBSCRIPTIONS})")
+            raise ValueError(f"subscription cap reached ({MAX_PUSH_SUBSCRIPTIONS})")
+
     with conn:
         conn.execute(
             """

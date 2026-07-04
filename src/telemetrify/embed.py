@@ -1,12 +1,28 @@
-from functools import lru_cache
+import threading
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
+# Lazy-loaded singleton, guarded by double-checked locking. A bare
+# @lru_cache(maxsize=1) is NOT safe here: two threads racing to call
+# `_model()` before the cache is populated can both pass the (unlocked)
+# "is it cached yet" check and both construct a SentenceTransformer
+# concurrently — wasted work at best, and a source of hangs/contention
+# inside the underlying torch/transformers load at worst. The lock below
+# ensures only the first caller ever constructs the model; every other
+# caller (racing or not) blocks briefly on the lock and then reads the
+# already-populated cache.
+_model_lock = threading.Lock()
+_model_instance = None
 
-@lru_cache(maxsize=1)
+
 def _model():
-    from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(MODEL_NAME)
+    global _model_instance
+    if _model_instance is None:
+        with _model_lock:
+            if _model_instance is None:
+                from sentence_transformers import SentenceTransformer
+                _model_instance = SentenceTransformer(MODEL_NAME)
+    return _model_instance
 
 
 def embed(text: str) -> list[float]:

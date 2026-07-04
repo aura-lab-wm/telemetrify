@@ -10,7 +10,16 @@ the launchd-spawned UI process has an empty `ANTHROPIC_*` env.
 
 Invocation (user text on stdin):
     claude -p --output-format json --model <m> --max-turns 1 \
-           --append-system-prompt <system>
+           --append-system-prompt <system> --safe-mode --tools ""
+
+--safe-mode and --tools "" isolate the call from the user's global ~/.claude
+config (hooks, skills, CLAUDE.md, MCP servers, builtin tools) — without them
+the spawned session is a full agentic Claude Code session that can hang
+indefinitely on OAuth-gated MCP server setup or a headless permission prompt
+with no TTY to answer it (2026-07-04: an /ask planner call died at exactly
+the 120s subprocess timeout to this, not slow inference). --safe-mode keeps
+normal keychain OAuth auth working, unlike --bare which forces
+ANTHROPIC_API_KEY-only auth.
 
 The CLI prints a one-line JSON envelope:
     {"subtype":"success","is_error":false,"result":"<text>",
@@ -123,6 +132,19 @@ class ClaudeCLIBackend:
             "--model", eff_model,
             "--max-turns", "1",
             "--append-system-prompt", system,
+            # Isolate from the user's global ~/.claude config. Without this the
+            # spawned session loads every installed hook, skill, CLAUDE.md, and
+            # MCP server (several require interactive OAuth that can never
+            # complete headlessly) before it ever gets to the prompt — unbounded
+            # setup work that can eat the whole subprocess timeout (2026-07-04:
+            # an /ask planner call died at exactly 120.0s to this, not slow
+            # inference). --safe-mode strips hooks/skills/CLAUDE.md/MCP servers
+            # while keeping normal keychain OAuth auth (unlike --bare, which
+            # forces ANTHROPIC_API_KEY-only auth); --tools "" removes the
+            # builtin-tool surface so a single-turn call can't get stuck on a
+            # permission prompt with no TTY to answer it.
+            "--safe-mode",
+            "--tools", "",
         ]
 
         # Run in a neutral cwd so the CLI doesn't load telemetrify's own

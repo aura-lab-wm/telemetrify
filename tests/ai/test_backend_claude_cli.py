@@ -97,6 +97,27 @@ def test_complete_disables_capture_hook_in_subprocess_env(monkeypatch):
     assert "PATH" in env, "child env must inherit the parent env, not replace it"
 
 
+def test_argv_isolates_from_user_config(monkeypatch):
+    """The spawned session must NOT load the user's global hooks / skills /
+    CLAUDE.md / MCP servers. Those are unbounded work (some MCP servers need
+    interactive OAuth that can never complete headlessly) and pushed a real
+    call over its 120s timeout (2026-07-04 /ask hang). --safe-mode strips all
+    of that while keeping normal keychain OAuth auth; --tools "" removes the
+    builtin-tool surface so the single-turn call can't get stuck on a
+    permission prompt with no TTY to answer it."""
+    from telemetrify.ai.backends.claude_cli import ClaudeCLIBackend
+
+    cap: dict = {}
+    _patch_run(monkeypatch, stdout=_envelope(), capture=cap)
+    b = ClaudeCLIBackend()
+    b.complete(system="s", user="u", model="m", max_tokens=8, json_schema=None)
+
+    argv = cap["argv"]
+    assert "--safe-mode" in argv
+    assert "--tools" in argv
+    assert argv[argv.index("--tools") + 1] == ""
+
+
 def test_dated_model_id_is_collapsed_to_alias(monkeypatch):
     from telemetrify.ai.backends.claude_cli import ClaudeCLIBackend
 
